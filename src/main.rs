@@ -62,8 +62,8 @@ mod tests {
     #[test]
     fn test_day2() {
         let d = Day2::load("data_aoc2022/day2_input.txt");
-        assert_eq!(d.part1(), Ok(1));
-        assert_eq!(d.part2(), Ok(2));
+        assert_eq!(d.part1(), Ok(13565));
+        assert_eq!(d.part2(), Ok(12424));
     }
 }
 
