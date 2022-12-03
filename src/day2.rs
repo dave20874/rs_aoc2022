@@ -154,19 +154,19 @@ mod tests {
 
     #[test]
     fn test_load() {
-        let d = Day2::load("data_aoc2022/day2_example1.txt");
+        let d = Day2::load("examples/day2_example1.txt");
         assert_eq!(d.plays.len(), 3);
     }
 
     #[test]
     fn test_score() {
-        let d = Day2::load("data_aoc2022/day2_example1.txt");
+        let d = Day2::load("examples/day2_example1.txt");
         assert_eq!(d.score_match(), 15);
     }
 
     #[test]
     fn test_score2() {
-        let d = Day2::load("data_aoc2022/day2_example1.txt");
+        let d = Day2::load("examples/day2_example1.txt");
         assert_eq!(d.score_match2(), 12);
     }
 }

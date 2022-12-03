@@ -118,19 +118,19 @@ mod tests {
 
     #[test]
     fn test_load() {
-        let d = Day3::load("data_aoc2022/day3_example1.txt");
+        let d = Day3::load("examples/day3_example1.txt");
         assert_eq!(d.rucksacks.len(), 6);
     }
 
     #[test]
     fn test_priority_sum() {
-        let d = Day3::load("data_aoc2022/day3_example1.txt");
+        let d = Day3::load("examples/day3_example1.txt");
         assert_eq!(d.priority_sum(), 157);
     }
 
     #[test]
     fn test_badge_sum() {
-        let d = Day3::load("data_aoc2022/day3_example1.txt");
+        let d = Day3::load("examples/day3_example1.txt");
         assert_eq!(d.badge_sum(), 70);
     }
 }

@@ -95,19 +95,19 @@ mod tests {
 
     #[test]
     fn test_load() {
-        let d = Day1::load("data_aoc2022/day1_example1.txt");
+        let d = Day1::load("examples/day1_example1.txt");
         assert_eq!(d.elves.len(), 5);
     }
 
     #[test]
     fn test_max() {
-        let d = Day1::load("data_aoc2022/day1_example1.txt");
+        let d = Day1::load("examples/day1_example1.txt");
         assert_eq!(d.max_cals(), 24000);
     }
 
     #[test]
     fn test_max3() {
-        let d = Day1::load("data_aoc2022/day1_example1.txt");
+        let d = Day1::load("examples/day1_example1.txt");
         assert_eq!(d.max3_cals(), 45000);
     }
 }
