@@ -5,12 +5,14 @@ mod day1;
 mod day2;
 mod day3;
 mod day4;
+mod day5;
 
 use day::Day;
 use day1::Day1;
 use day2::Day2;
 use day3::Day3;
 use day4::Day4;
+use day5::Day5;
 
 
 fn do_day(n: usize, day: &dyn Day) {
@@ -33,12 +35,14 @@ fn main() {
     let day2 = Day2::load("data_aoc2022/day2_input.txt");
     let day3 = Day3::load("data_aoc2022/day3_input.txt");
     let day4 = Day4::load("data_aoc2022/day4_input.txt");
+    let day5 = Day5::load("data_aoc2022/day5_input.txt");   
 
     let days: Vec<&dyn Day> = vec![
         &day1, 
         &day2,
         &day3,
         &day4,
+        &day5,
     ];
 
     let selected_day: Option<usize> = None;
@@ -86,6 +90,13 @@ mod tests {
         let d = Day4::load("data_aoc2022/day4_input.txt");
         assert_eq!(d.part1(), Ok(459));
         assert_eq!(d.part2(), Ok(779));
+    }
+
+    #[test]
+    fn test_day5() {
+        let d = Day5::load("data_aoc2022/day5_input.txt");
+        assert_eq!(d.part1(), Err("Not Implemented"));
+        assert_eq!(d.part2(), Err("Not Implemented"));
     }
 }
 

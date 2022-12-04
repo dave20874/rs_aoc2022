@@ -4,12 +4,12 @@ use std::io::{BufRead, BufReader};
 use lazy_static::lazy_static;
 use regex::Regex;
 
-pub struct DayN {
+pub struct Day5 {
     tbd: Vec<usize>,
 }
 
-impl DayN {
-    pub fn load(filename: &str) -> DayN {
+impl Day5 {
+    pub fn load(filename: &str) -> Day5 {
         let mut tbd: Vec<usize> = Vec::new();
         lazy_static! {
             static ref LINE_RE: Regex =
@@ -31,17 +31,19 @@ impl DayN {
             }
         }
 
-        DayN { tbd: tbd }
+        Day5 { tbd: tbd }
     }
 }
 
-impl Day for DayN {
+impl Day for Day5 {
     fn part1(&self) -> Result<usize, &str> {
-        Ok(1)
+        // Ok(1)
+        Err("Not Implemented")
     }
 
     fn part2(&self) -> Result<usize, &str> {
-        Ok(2)
+        // Ok(2)
+        Err("Not Implemented")
     }
 }
 
@@ -52,7 +54,7 @@ mod tests {
 
     #[test]
     fn test_load() {
-        let d = DayN::load("examples/dayN_example1.txt");
+        let d = Day5::load("examples/day5_example1.txt");
         assert_eq!(d.tbd.len(), 10);
     }
 }
