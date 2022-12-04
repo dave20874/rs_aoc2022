@@ -5,11 +5,11 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 pub struct DayN {
-    _tbd: Vec<usize>,
+    tbd: Vec<usize>,
 }
 
 impl DayN {
-    pub fn _load(filename: &str) -> DayN {
+    pub fn load(filename: &str) -> DayN {
         let mut tbd: Vec<usize> = Vec::new();
         lazy_static! {
             static ref LINE_RE: Regex =
@@ -31,10 +31,8 @@ impl DayN {
             }
         }
 
-        DayN { _tbd: tbd }
+        DayN { tbd: tbd }
     }
-
-    // TODO: Add methods of DayN
 }
 
 impl Day for DayN {
@@ -54,9 +52,7 @@ mod tests {
 
     #[test]
     fn test_load() {
-        let d = DayN::_load("data/dayN_example1.txt");
+        let d = DayN::load("examples/dayN_example1.txt");
         assert_eq!(d._tbd.len(), 10);
     }
-
-    // TODO: Add tests for methods
 }
