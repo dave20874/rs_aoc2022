@@ -32,7 +32,7 @@ fn main() {
     let day1 = Day1::load("data_aoc2022/day1_input.txt");
     let day2 = Day2::load("data_aoc2022/day2_input.txt");
     let day3 = Day3::load("data_aoc2022/day3_input.txt");
-    let day4 = Day4::load("data_aoc2022/dummy_input.txt");
+    let day4 = Day4::load("data_aoc2022/day4_input.txt");
 
     let days: Vec<&dyn Day> = vec![
         &day1, 
@@ -83,9 +83,9 @@ mod tests {
 
     #[test]
     fn test_day4() {
-        let d = Day4::load("data_aoc2022/dummy_input.txt");
-        assert_eq!(d.part1(), Ok(1));
-        assert_eq!(d.part2(), Ok(2));
+        let d = Day4::load("data_aoc2022/day4_input.txt");
+        assert_eq!(d.part1(), Ok(459));
+        assert_eq!(d.part2(), Ok(779));
     }
 }
 
