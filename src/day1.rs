@@ -1,4 +1,4 @@
-use crate::day::Day;
+use crate::day::{Day, Answer};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
@@ -79,12 +79,12 @@ impl Day1 {
 }
 
 impl Day for Day1 {
-    fn part1(&self) -> Result<usize, &str> {
-        Ok(self.max_cals())
+    fn part1(&self) -> Answer {
+        Answer::Number(self.max_cals())
     }
 
-    fn part2(&self) -> Result<usize, &str> {
-        Ok(self.max3_cals())
+    fn part2(&self) -> Answer {
+        Answer::Number(self.max3_cals())
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::day::Day;
+use crate::day::{Day, Answer};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use lazy_static::lazy_static;
@@ -138,12 +138,12 @@ impl Day2 {
 }
 
 impl Day for Day2 {
-    fn part1(&self) -> Result<usize, &str> {
-        Ok(self.score_match())
+    fn part1(&self) -> Answer {
+        Answer::Number(self.score_match())
     }
 
-    fn part2(&self) -> Result<usize, &str> {
-        Ok(self.score_match2())
+    fn part2(&self) -> Answer {
+        Answer::Number(self.score_match2())
     }
 }
 

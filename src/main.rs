@@ -1,3 +1,5 @@
+extern crate core;
+
 #[macro_use]
 
 mod day;
@@ -7,7 +9,7 @@ mod day3;
 mod day4;
 mod day5;
 
-use day::Day;
+use day::{Day, Answer};
 use day1::Day1;
 use day2::Day2;
 use day3::Day3;
@@ -17,12 +19,12 @@ use day5::Day5;
 
 fn do_day(n: usize, day: &dyn Day) {
     match day.part1() {
-        Ok(val) => println!("day {}, part 1: {}", n, val),
-        Err(msg) => println!("day {}, part 1: {}", n, msg),
+        Answer::Number(val) => println!("day {}, part 1: {}", n, val),
+        Answer::Message(s) => println!("day {}, part 1: '{}'", n, s),
     }
     match day.part2() {
-        Ok(val) => println!("day {}, part 2: {}", n, val),
-        Err(msg) => println!("day {}, part 2: {}", n, msg),
+        Answer::Number(val) => println!("day {}, part 2: {}", n, val),
+        Answer::Message(s) => println!("day {}, part 2: '{}'", n, s),
     }
 }
 
@@ -67,36 +69,36 @@ mod tests {
     #[test]
     fn test_day1() {
         let d = Day1::load("data_aoc2022/day1_input.txt");
-        assert_eq!(d.part1(), Ok(71780));
-        assert_eq!(d.part2(), Ok(212489));
+        assert_eq!(d.part1(), Answer::Number(71780));
+        assert_eq!(d.part2(), Answer::Number(212489));
     }
 
     #[test]
     fn test_day2() {
         let d = Day2::load("data_aoc2022/day2_input.txt");
-        assert_eq!(d.part1(), Ok(13565));
-        assert_eq!(d.part2(), Ok(12424));
+        assert_eq!(d.part1(), Answer::Number(13565));
+        assert_eq!(d.part2(), Answer::Number(12424));
     }
 
     #[test]
     fn test_day3() {
         let d = Day3::load("data_aoc2022/day3_input.txt");
-        assert_eq!(d.part1(), Ok(8153));
-        assert_eq!(d.part2(), Ok(2342));
+        assert_eq!(d.part1(), Answer::Number(8153));
+        assert_eq!(d.part2(), Answer::Number(2342));
     }
 
     #[test]
     fn test_day4() {
         let d = Day4::load("data_aoc2022/day4_input.txt");
-        assert_eq!(d.part1(), Ok(459));
-        assert_eq!(d.part2(), Ok(779));
+        assert_eq!(d.part1(), Answer::Number(459));
+        assert_eq!(d.part2(), Answer::Number(779));
     }
 
     #[test]
     fn test_day5() {
         let d = Day5::load("data_aoc2022/day5_input.txt");
-        assert_eq!(d.part1(), Err("Not Implemented"));
-        assert_eq!(d.part2(), Err("Not Implemented"));
+        assert_eq!(d.part1(), Answer::Message("SHMSDGZVC".to_string()));
+        assert_eq!(d.part2(), Answer::Message("VRZGHDFBQ".to_string()));
     }
 }
 
