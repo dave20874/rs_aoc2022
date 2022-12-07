@@ -8,6 +8,7 @@ mod day2;
 mod day3;
 mod day4;
 mod day5;
+mod day6;
 
 use day::{Day, Answer};
 use day1::Day1;
@@ -15,6 +16,7 @@ use day2::Day2;
 use day3::Day3;
 use day4::Day4;
 use day5::Day5;
+use day6::Day6;
 
 
 fn do_day(n: usize, day: &dyn Day) {
@@ -38,6 +40,7 @@ fn main() {
     let day3 = Day3::load("data_aoc2022/day3_input.txt");
     let day4 = Day4::load("data_aoc2022/day4_input.txt");
     let day5 = Day5::load("data_aoc2022/day5_input.txt");   
+    let day6 = Day6::load("data_aoc2022/day6_input.txt");
 
     let days: Vec<&dyn Day> = vec![
         &day1, 
@@ -45,6 +48,7 @@ fn main() {
         &day3,
         &day4,
         &day5,
+        &day6,
     ];
 
     let selected_day: Option<usize> = None;
@@ -99,6 +103,13 @@ mod tests {
         let d = Day5::load("data_aoc2022/day5_input.txt");
         assert_eq!(d.part1(), Answer::Message("SHMSDGZVC".to_string()));
         assert_eq!(d.part2(), Answer::Message("VRZGHDFBQ".to_string()));
+    }
+
+    #[test]
+    fn test_day6() {
+        let d = Day6::load("data_aoc2022/day6_input.txt");
+        assert_eq!(d.part1(), Answer::Number(1287));
+        assert_eq!(d.part2(), Answer::Number(3716));
     }
 }
 
