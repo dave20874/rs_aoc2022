@@ -11,6 +11,7 @@ mod day5;
 mod day6;
 mod day7;
 mod day8;
+mod day9;
 
 use day::{Day, Answer};
 use day1::Day1;
@@ -21,6 +22,7 @@ use day5::Day5;
 use day6::Day6;
 use day7::Day7;
 use day8::Day8;
+use day9::Day9;
 
 
 fn do_day(n: usize, day: &dyn Day) {
@@ -47,6 +49,7 @@ fn main() {
     let day6 = Day6::load("data_aoc2022/day6_input.txt");
     let day7 = Day7::load("data_aoc2022/day7_input.txt");
     let day8 = Day8::load("data_aoc2022/day8_input.txt");
+    let day9 = Day9::load("data_aoc2022/day9_input.txt");
 
     let days: Vec<&dyn Day> = vec![
         &day1, 
@@ -57,6 +60,7 @@ fn main() {
         &day6,
         &day7,
         &day8,
+        &day9,
     ];
 
     let selected_day: Option<usize> = None;
@@ -132,6 +136,13 @@ mod tests {
         let d = Day8::load("data_aoc2022/day8_input.txt");
         assert_eq!(d.part1(), Answer::Number(1787));
         assert_eq!(d.part2(), Answer::Number(440640));
+    }
+
+    #[test]
+    fn test_day9() {
+        let d = Day9::load("data_aoc2022/day9_input.txt");
+        assert_eq!(d.part1(), Answer::Number(6090));  // 2754 too low
+        assert_eq!(d.part2(), Answer::Number(3));
     }
 }
 
