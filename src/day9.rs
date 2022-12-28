@@ -42,10 +42,11 @@ impl Sim {
         Sim { num_knots, knots, tail_visited }
     }
 
-    fn with_head(num_knots: usize, head_start: (isize, isize)) -> Sim {
+    #[cfg(test)]
+    fn with_head(num_knots: usize, head: (isize, isize)) -> Sim {
 
         let mut knots: Vec<(isize, isize)> = Vec::new();
-        knots.push( head_start);
+        knots.push(head);
         for _n in 1..num_knots {
             knots.push( (0, 0) );
         }
@@ -56,95 +57,70 @@ impl Sim {
         Sim { num_knots, knots, tail_visited }
     }
 
-    fn do_move(&mut self, dir: &Dir, knot: usize) {
+    fn delta_for_difference(difference: (isize, isize)) -> (isize, isize) {
+        let mut delta = (0, 0);
 
-        // TODO: Make updates to followers not sensitive to the direction the leader took.
+        if (difference.0 == 0) || (difference.1 == 0) {
+            // they are in a row or col.  Move horizontally or vertically to keep up.
 
-        match dir {
-            Dir::Right => {
-                // Increment this knot's x
-                self.knots[knot].0 += 1;
-
-                if (knot < self.num_knots-1) {
-                    // There's a follower
-                    if self.knots[knot-1].0 < self.knots[knot].0-1 {
-                        // Move the follower right, too.
-                        self.do_move(dir, knot+1);
-                        // Put follower on the same row
-                        if (self.knots[knot-1].1 < self.knots[knot].1) {
-                            // move follower up
-                            self.do_move(&Dir::Up, knot+1);
-                        }
-                        else if (self.knots[knot[1].1 > self.knots[knot].1) {
-                            // move follower down
-                            self.do_move(&Dir::Down, knot+1);
-                        }
-
-                    }
+            if difference.0 > 1 {
+                delta.0 = 1;
+            }
+            else if difference.0 < -1 {
+                delta.0 = -1;
+            }
+            else if difference.1 > 1 {
+                delta.1 = 1;
+            }
+            else if difference.1 < -1 {
+                delta.1 = -1;
+            }
+        }
+        else {
+            // they are not in same row or col.  Move diagonally.
+            if difference.0 > 1 {
+                delta.0 = 1;
+                if difference.1 > 0 {
+                    delta.1 = 1;
                 }
-
-                // For each following knot ...
-                for i in 1..self.num_knots {
-                    // If follower is too far away, move it
-                    if self.knots[i].0 < self.knots[i-1].0-1 {
-                        // Update follower's x to be one less than leader
-                        self.knots[i].0 = self.knots[i-1].0-1;
-                        // Update follower's y to be equal to leader
-                        self.knots[i].1 = self.knots[i-1].1;
-                    }
+                else {
+                    delta.1 = -1;
                 }
             }
-            Dir::Left => {
-                // Decrement x
-                self.knots[0].0 -= 1;
-
-                // For each following knot ...
-                for i in 1..self.num_knots {
-                    // If follower is too far away, move it
-                    if self.knots[i].0 > self.knots[i-1].0 + 1 {
-                        // Update follower's x to be one more than leader
-                        self.knots[i].0 = self.knots[i-1].0 + 1;
-                        // Update follower's y to be equal to leader
-                        self.knots[i].1 = self.knots[i-1].1;
-                    }
+            else if difference.0 < -1 {
+                delta.0 = -1;
+                if difference.1 > 0 {
+                    delta.1 = 1;
+                }
+                else {
+                    delta.1 = -1;
                 }
             }
-            Dir::Up => {
-                // Increment y
-                self.knots[0].1 += 1;
-
-                // For each following knot ...
-                for i in 1..self.num_knots {
-                    // If follower is too far away, move it
-                    if self.knots[i].1 < self.knots[i-1].1 - 1 {
-                        // Update follower's y to be one less than leader
-                        self.knots[i].1 = self.knots[i-1].1 - 1;
-                        // Update follower's x to be equal to leader
-                        self.knots[i].0 = self.knots[i-1].0;
-                    }
+            else if difference.1 > 1 {
+                delta.1 = 1;
+                if difference.0 > 0 {
+                    delta.0 = 1;
+                }
+                else {
+                    delta.0 = -1;
                 }
             }
-            Dir::Down => {
-                // Decrement y
-                self.knots[0].1 -= 1;
-
-                // For each following knot ...
-                for i in 1..self.num_knots {
-                    // If follower is too far away, move it
-                    if self.knots[i].1 > self.knots[i-1].1 + 1 {
-                        // Update follower's y to be one more than leader
-                        self.knots[i].1 = self.knots[i-1].1 + 1;
-                        // Update follower's x to be equal to leader
-                        self.knots[i].0 = self.knots[i-1].0;
-                    }
+            else if difference.1 < -1 {
+                delta.1 = -1;
+                if difference.0 > 0 {
+                    delta.0 = 1;
+                }
+                else {
+                    delta.0 = -1;
                 }
             }
         }
 
-        // Add tail's new coordinate to tail_visited
-        self.tail_visited.insert(self.knots[self.num_knots-1]);
+        delta
     }
 
+    // for debugging.  Don't complain when not in use.
+    #[allow(dead_code)]
     fn show_rope(&self) {
         // get extents
         let mut min_x = 0;
@@ -155,10 +131,10 @@ impl Sim {
         for i in 0..self.num_knots {
             let x = self.knots[i].0;
             let y = self.knots[i].1;
-            if (x < min_x) { min_x = x; }
-            if (x > max_x) { max_x = x; }
-            if (y < min_y) { min_y = y; }
-            if (y > max_y) { max_y = y; }
+            if x < min_x { min_x = x; }
+            if x > max_x { max_x = x; }
+            if y < min_y { min_y = y; }
+            if y > max_y { max_y = y; }
         }
 
         // print full extents
@@ -185,13 +161,43 @@ impl Sim {
         }
         println!("---------------------------------------------------");
     }
+    
+    fn do_move(&mut self, dir: &Dir) {
+
+        // Update the head knot
+        let delta = match dir {
+            Dir::Right => (1, 0),
+            Dir::Left => (-1, 0),
+            Dir::Up => (0, 1),
+            Dir::Down => (0, -1)
+        };
+        self.knots[0].0 += delta.0;
+        self.knots[0].1 += delta.1;
+
+        // Update followers
+        for knot in 1..self.num_knots {
+            let difference = 
+                (self.knots[knot-1].0 - self.knots[knot].0, 
+                 self.knots[knot-1].1 - self.knots[knot].1);
+            
+            let delta = Sim::delta_for_difference(difference);
+            self.knots[knot].0 += delta.0;
+            self.knots[knot].1 += delta.1;
+        }
+
+        // Add tail's new coordinate to tail_visited
+        self.tail_visited.insert(self.knots[self.num_knots-1]);
+
+        // self.show_rope();
+    }
+
 
     fn do_instruction(&mut self, instruction: &Instruction) {
         for _n in 0..instruction.dist {
             self.do_move(&instruction.dir);
         }
 
-        self.show_rope();
+        // self.show_rope();
     }
 
     fn do_instructions(&mut self, instructions: &Vec<Instruction>) {
@@ -200,10 +206,10 @@ impl Sim {
         }
     }
 
-    fn get_head(&self) -> (isize, isize) {
-        self.knots[0]
-    }
-
+    // fn get_head(&self) -> (isize, isize) {
+    //     self.knots[0]
+    // }
+    #[cfg(test)]
     fn get_tail(&self) -> (isize, isize) {
         self.knots[self.num_knots-1]
     }
@@ -261,7 +267,10 @@ impl Day for Day9 {
     }
 
     fn part2(&self) -> Answer {
-        Answer::Number(1)
+        let mut sim = Sim::new(10);
+        sim.do_instructions(&self.instructions);
+
+        Answer::Number(sim.get_num_tail_positions())
     }
 }
 
