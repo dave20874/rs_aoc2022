@@ -1,9 +1,11 @@
 use crate::day::{Day, Answer};
+use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use lazy_static::lazy_static;
 use regex::Regex;
 
+#[derive (Copy, Clone)]
 enum Operation {
     Add(usize),
     Mul(usize),
@@ -14,17 +16,29 @@ enum Operation {
 impl Operation {
     fn evaluate(&self, old: usize) -> usize {
         match self {
-            Operation::Add(value) => old + value,
-            Operation::Mul(value) => old * value,
-            Operation::Square => old * old,
-            Operation::Double => old + old,
+            Operation::Add(value) => {
+                // println!("Worry level is increased by {} to {}", value, old+value);
+                old + value
+            }
+            Operation::Mul(value) => {
+                // println!("Worry level is multiplied by {} to {}", value, old*value);
+                old * value
+            }
+            Operation::Square => {
+                // println!("Worry level is multipled by itself to {}", old * old);
+                old * old
+            }
+            Operation::Double => {
+                // println!("Worry level is added to itself to {}", old + old);
+                old + old
+            }
         }
     }
 }
 
 struct Monkey {
     id: usize,
-    items: Vec<usize>,
+    items: VecDeque<usize>,
     op: Operation,
     divisor: usize,
     throw_true: usize,
@@ -36,7 +50,7 @@ impl Monkey {
     fn new(id: usize) -> Monkey {
         Monkey {
             id,
-            items:Vec::new(),
+            items:VecDeque::new(),
             op:Operation::Add(0),
             divisor: 1,
             throw_true: 0,
@@ -47,7 +61,7 @@ impl Monkey {
 
     fn set_items(&mut self, items: &Vec<usize>) {
         for i in items {
-            self.items.push(*i);
+            self.items.push_back(*i);
         }
     }
 
@@ -65,6 +79,118 @@ impl Monkey {
 
     fn set_throw_false(&mut self, other: usize) {
         self.throw_false = other;
+    }
+
+    // throw() performs turn-based modifications on thrower:
+    //   * removes head item from items
+    //   * increments inspects
+    //   * computes new worry value
+    //   * determines id of monkey to throw to
+    //   * returns catching monkey and new worry value of this item
+    fn throw(&mut self, div3: bool) -> (usize, usize) {
+        let mut worry = self.items.pop_front().unwrap();
+
+        self.inspects += 1;
+
+        // perform monkey's operation on item to get worry level.
+        // println!("  monkey inspects an item with worry level {}", worry);
+        worry = self.op.evaluate(worry);
+        // println!("  worry level changes to {}", worry);
+
+        if div3 {
+            // reduce worry level, dividing by three.
+            worry = worry / 3;
+            // println!("  worry level is divided by 3 to {}", worry);
+        }
+
+        // decide which other monkey to throw item to
+        let other_id = if worry % self.divisor == 0 {
+            // println!("  current worry level is divisible by {}", self.divisor);
+            self.throw_true
+        }
+        else {
+            // println!("  current level is not divisible by {}", self.divisor);
+            self.throw_false
+        };
+        // println!("  Item with worry level {} is thrown to {}", worry, other_id);
+
+        (other_id, worry)
+    }
+
+    // catch() performs turn-based modifications on catcher:
+    //   * adds new item to tail of items.
+    fn catch(&mut self, worry: usize) {
+        self.items.push_back(worry);
+    }
+}
+
+struct Sim {
+    monkeys: Vec<Monkey>,
+    div3: bool,
+    lcm: usize,
+}
+
+impl Sim {
+    fn new(initial: &Vec<Monkey>, div3: bool) -> Sim {
+        // Create a new vector of monkeys
+        let mut monkeys: Vec<Monkey> = Vec::new();
+        let mut lcm = 1;
+
+        // Create new monkeys, copies of the starter ones
+        for m in initial {
+            let mut new_items = VecDeque::new();
+            for item in &m.items {
+                new_items.push_back(*item);
+            }
+            let new_monkey = Monkey {
+                id: m.id,
+                items: new_items,
+                op: m.op,
+                divisor: m.divisor,
+                throw_true: m.throw_true,
+                throw_false: m.throw_false,
+                inspects: 0,
+            };
+
+            lcm = lcm * new_monkey.divisor;
+
+            monkeys.push(new_monkey);
+        }
+
+        Sim { monkeys, div3, lcm }
+    }
+
+    fn do_monkey(&mut self, monkey_id: usize) {
+        while !self.monkeys[monkey_id].items.is_empty() {
+            let thrower = &mut self.monkeys[monkey_id];
+            let (catcher_id, worry) = thrower.throw(self.div3);
+            let adjusted_worry = worry % self.lcm;
+            let catcher = &mut self.monkeys[catcher_id];
+            catcher.catch(adjusted_worry);
+        }
+    }
+
+    fn do_round(&mut self) {
+        for id in 0..self.monkeys.len() {
+            self.do_monkey(id);
+        }
+    }
+
+    fn monkey_business(&self) -> usize {
+        // collect inspect values into an array
+        let mut inspects: Vec<usize> = Vec::new();
+        for m in &self.monkeys {
+            inspects.push(m.inspects);
+        }
+
+        // sort
+        inspects.sort();
+        inspects.reverse();
+
+        // multiply the two largest terms
+        // println!("inspects: {:?}", inspects);
+
+        inspects[0] * inspects[1]
     }
 }
 
@@ -90,13 +216,13 @@ impl Day11 {
             static ref THROW_FALSE_RE: Regex =
                 Regex::new("    If false: throw to monkey ([0-9]+)").unwrap();
             static ref MULTIPLY_RE: Regex =
-                Regex::new("new = old * ([0-9]+)").unwrap();
+                Regex::new("new = old \\* ([0-9]+)").unwrap();
             static ref ADD_RE: Regex =
-                Regex::new("new = old + ([0-9]+)").unwrap();
+                Regex::new("new = old \\+ ([0-9]+)").unwrap();
             static ref SQUARE_RE: Regex =
-                Regex::new("new = old * old").unwrap();
+                Regex::new("new = old \\* old").unwrap();
             static ref DOUBLE_RE: Regex =
-                Regex::new("new = old + old").unwrap();
+                Regex::new("new = old \\+ old").unwrap();
         }
 
         let file = File::open(filename).unwrap();
@@ -229,11 +355,25 @@ impl Day11 {
 
 impl Day for Day11 {
     fn part1(&self) -> Answer {
-        Answer::Number(1)
+        let mut sim = Sim::new(&self.monkeys, true);
+        for _ in 0..20 {
+            sim.do_round();
+        }
+
+        let mb = sim.monkey_business();
+
+        Answer::Number(mb)
     }
 
     fn part2(&self) -> Answer {
-        Answer::Number(2)
+        let mut sim = Sim::new(&self.monkeys, false);
+        for _ in 0..10000 {
+            sim.do_round();
+        }
+
+        let mb = sim.monkey_business();
+
+        Answer::Number(mb)
     }
 }
 
@@ -246,5 +386,66 @@ mod tests {
     fn test_load() {
         let d = Day11::load("examples/day11_example1.txt");
         assert_eq!(d.monkeys.len(), 4);
+    }
+
+    #[test]
+    fn test_round() {
+        let d = Day11::load("examples/day11_example1.txt");
+        let mut sim: Sim = Sim::new(&d.monkeys, true);
+        sim.do_round();
+        assert_eq!(sim.monkeys[0].items.len(), 4);
+        assert_eq!(sim.monkeys[1].items.len(), 6);
+        assert_eq!(sim.monkeys[2].items.len(), 0);
+        assert_eq!(sim.monkeys[3].items.len(), 0);
+    }
+
+    #[test]
+    fn test_round20() {
+        let d = Day11::load("examples/day11_example1.txt");
+        let mut sim = Sim::new(&d.monkeys, true);
+        for n in 0..20 {
+            println!("--- Round {} -----------------------------------", n+1);
+            sim.do_round();
+        }
+
+        let mb = sim.monkey_business();
+
+        assert_eq!(mb, 10605);
+    }
+
+
+    #[test]
+    fn test_round_pt2() {
+        let d = Day11::load("examples/day11_example1.txt");
+        let mut sim: Sim = Sim::new(&d.monkeys, false);
+        sim.do_round();
+        assert_eq!(sim.monkeys[0].items.len(), 4);
+        assert_eq!(sim.monkeys[1].items.len(), 6);
+        assert_eq!(sim.monkeys[2].items.len(), 0);
+        assert_eq!(sim.monkeys[3].items.len(), 0);
+
+        let mb = sim.monkey_business();
+        assert_eq!(mb, 6*4);
+    }
+
+    #[test]
+    fn test_rounds_pt2() {
+        let d = Day11::load("examples/day11_example1.txt");
+        let mut sim: Sim = Sim::new(&d.monkeys, false);
+        /*
+        for _ in 0..1000 {
+            sim.do_round();
+        }
+
+        let mb = sim.monkey_business();
+        assert_eq!(mb, 5204*5192);
+        */
+
+        for _ in 0..10000 {
+            sim.do_round();
+        }
+        let mb = sim.monkey_business();
+        assert_eq!(mb, 52166*52013);
+
     }
 }
