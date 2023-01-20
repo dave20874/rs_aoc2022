@@ -432,14 +432,6 @@ mod tests {
     fn test_rounds_pt2() {
         let d = Day11::load("examples/day11_example1.txt");
         let mut sim: Sim = Sim::new(&d.monkeys, false);
-        /*
-        for _ in 0..1000 {
-            sim.do_round();
-        }
-
-        let mb = sim.monkey_business();
-        assert_eq!(mb, 5204*5192);
-        */
 
         for _ in 0..10000 {
             sim.do_round();
