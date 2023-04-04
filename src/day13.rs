@@ -1,20 +1,63 @@
 use crate::day::{Day, Answer};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::cmp::Ordering;
+use core::cmp::{PartialOrd, PartialEq};
 
 enum PacketComponent {
     List(PacketList),
     Integer(usize),
 }
 
-/* 
-impl PartialOrd for PacketComponent {
-
-}
-*/
-
 struct PacketList {
     list: Vec<PacketComponent>,
+}
+
+impl PartialEq for PacketComponent {
+    fn eq(&self, other: &Self) -> bool {
+        self.partial_cmp(other) == Some(Ordering::Equal)
+    }
+}
+
+impl PartialOrd for PacketComponent {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match self {
+            PacketComponent::List(l1) => {
+                match other {
+                    PacketComponent::List(l2) => {
+                        // Comparing two lists: l1, l2
+                        l1.partial_cmp(l2)
+                    }
+                    PacketComponent::Integer(n2) => {
+                        // Exactly one is integer, convert it to a list and compare the lists
+                        let l2 = PacketList::from_int(*n2);
+                        l1.partial_cmp(&l2)
+                    }
+                }
+            }
+            PacketComponent::Integer(n1) => {
+                match other {
+                    PacketComponent::List(l2) => {
+                        // Exactly one is integer, convert it to a list and compare the lists
+                        let l1 = PacketList::from_int(*n1);
+                        l1.partial_cmp(&l2)
+                    }
+                    PacketComponent::Integer(n2) => {
+                        // Comparing two integers
+                        if n1 < n2 {
+                            Some(Ordering::Less)
+                        }
+                        else if n1 > n2 {
+                            Some(Ordering::Greater)
+                        }
+                        else {
+                            Some(Ordering::Equal)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl PacketList {
@@ -24,6 +67,11 @@ impl PacketList {
         let (_index, list) = PacketList::parse(&s_chars, 0);
 
         list        
+    }
+
+    pub fn from_int(n: usize) -> PacketList {
+        let list = vec!(PacketComponent::Integer(n));
+        PacketList { list }
     }
 
     fn parse(s_chars: &Vec<char>, mut index: usize) -> (usize, PacketList) {
@@ -81,11 +129,49 @@ impl PacketList {
     }
 }
 
-/* 
+impl PartialEq for PacketList {
+    fn eq(&self, other: &Self) -> bool {
+        if self.list.len() != other.list.len() { return false; }
+        for i in 0..self.list.len() {
+            if self.list[i] != other.list[i] { return false; }
+        }
+        
+        return true;
+    }
+}
+
 impl PartialOrd for PacketList {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let mut i = 0;
+        while i < self.list.len() && i < other.list.len() {
+            // compare ith items
+            if self.list[i] < other.list[i] {
+                return Some(Ordering::Less);
+            }
+            if self.list[i] > other.list[i] {
+                return Some(Ordering::Greater);
+            }
+
+            i += 1;
+        }
+
+        // one or both lists ended.
+        if (i >= self.list.len()) && (i >= other.list.len()) {
+            // both lists ended
+            Some(Ordering::Equal)
+        }
+        else if i >= self.list.len() {
+            // self.list ended before other.list
+            Some(Ordering::Less)
+        }
+        else {
+            // other.list ended before self.list
+            Some(Ordering::Greater)
+        }
+
+    }
 
 }
-*/
 
 pub struct Day13 {
     pairs: Vec<(PacketList, PacketList)>,
@@ -151,11 +237,25 @@ impl Day13 {
 
         Day13 { pairs }
     }
+
+    pub fn ordered_right_sum(&self) -> usize {
+        let mut sum = 0;
+        let mut index = 0;
+
+        for (left, right) in &self.pairs {
+            index += 1;
+            if left < right {
+                sum += index;
+            }
+        }
+
+        sum
+    }
 }
 
 impl Day for Day13 {
     fn part1(&self) -> Answer {
-        Answer::Number(1)
+        Answer::Number(self.ordered_right_sum())
     }
 
     fn part2(&self) -> Answer {
@@ -172,5 +272,84 @@ mod tests {
     fn test_load() {
         let d = Day13::load("examples/day13_example1.txt");
         assert_eq!(d.pairs.len(), 8);
+    }
+
+    #[test]
+    fn test_ordering_eg1() {
+        let p1 = PacketList::new("[1,1,3,1,1]");
+        let p2 = PacketList::new("[1,1,5,1,1]");
+
+        assert!(p1 < p2);
+    }
+
+    #[test]
+    fn test_ordering_eg2() {
+        let p1 = PacketList::new("[[1],[2,3,4]]");
+        let p2 = PacketList::new("[[1],4]");
+
+        assert!(p1 < p2);
+    }
+
+    #[test]
+    fn test_ordering_eg3() {
+        let p1 = PacketList::new("[9]");
+        let p2 = PacketList::new("[[8,7,6]]");
+
+        assert!(p1 >p2);
+    }
+
+    #[test]
+    fn test_ordering_eg4() {
+        let p1 = PacketList::new("[[4,4],4,4]");
+        let p2 = PacketList::new("[[4,4],4,4,4]");
+
+        assert!(p1 < p2);
+    }
+
+    #[test]
+    fn test_ordering_eg5() {
+        let p1 = PacketList::new("[7,7,7,7]");
+        let p2 = PacketList::new("[7,7,7]");
+
+        assert!(p1 > p2);
+    }
+
+    #[test]
+    fn test_ordering_eg6() {
+        let p1 = PacketList::new("[]");
+        let p2 = PacketList::new("[3]");
+
+        assert!(p1 < p2);
+    }
+
+    #[test]
+    fn test_ordering_eg7() {
+        let p1 = PacketList::new("[[[]]]");
+        let p2 = PacketList::new("[[]]");
+
+        assert!(p1 > p2);
+    }
+
+    #[test]
+    fn test_ordering_eg8() {
+        let p1 = PacketList::new("[1,[2,[3,[4,[5,6,7]]]],8,9]");
+        let p2 = PacketList::new("[1,[2,[3,[4,[5,6,0]]]],8,9]");
+
+        assert!(p1 > p2);
+    }
+
+    #[test]
+    fn test_ordered_right_sum() {
+        let d = Day13::load("examples/day13_example1.txt");
+        let sum = d.ordered_right_sum();
+        assert_eq!(sum, 13);
+    }
+
+
+    #[test]
+    fn test_part1() {
+        let d = Day13::load("examples/day13_example1.txt");
+        let result = d.part1();
+        assert_eq!(result, Answer::Number(13));
     }
 }
