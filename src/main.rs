@@ -64,7 +64,6 @@ fn main() {
     let day12 = Day12::load("data_aoc2022/day12_input.txt");
     let day13 = Day13::load("data_aoc2022/day13_input.txt");
     let day14 = Day14::load("data_aoc2022/day14_input.txt");
-
     let days: Vec<&dyn Day> = vec![
         &day1, 
         &day2,
