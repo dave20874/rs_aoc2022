@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::cmp::Ordering;
 use core::cmp::{PartialOrd, PartialEq};
+use sorted_vec::SortedVec;
 
 enum PacketComponent {
     List(PacketList),
@@ -13,25 +14,19 @@ struct PacketList {
     list: Vec<PacketComponent>,
 }
 
-impl PartialEq for PacketComponent {
-    fn eq(&self, other: &Self) -> bool {
-        self.partial_cmp(other) == Some(Ordering::Equal)
-    }
-}
-
-impl PartialOrd for PacketComponent {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+impl Ord for PacketComponent {
+    fn cmp(&self, other: &Self) -> Ordering {
         match self {
             PacketComponent::List(l1) => {
                 match other {
                     PacketComponent::List(l2) => {
                         // Comparing two lists: l1, l2
-                        l1.partial_cmp(l2)
+                        l1.cmp(l2)
                     }
                     PacketComponent::Integer(n2) => {
                         // Exactly one is integer, convert it to a list and compare the lists
                         let l2 = PacketList::from_int(*n2);
-                        l1.partial_cmp(&l2)
+                        l1.cmp(&l2)
                     }
                 }
             }
@@ -40,23 +35,38 @@ impl PartialOrd for PacketComponent {
                     PacketComponent::List(l2) => {
                         // Exactly one is integer, convert it to a list and compare the lists
                         let l1 = PacketList::from_int(*n1);
-                        l1.partial_cmp(&l2)
+                        l1.cmp(&l2)
                     }
                     PacketComponent::Integer(n2) => {
                         // Comparing two integers
                         if n1 < n2 {
-                            Some(Ordering::Less)
+                            Ordering::Less
                         }
                         else if n1 > n2 {
-                            Some(Ordering::Greater)
+                            Ordering::Greater
                         }
                         else {
-                            Some(Ordering::Equal)
+                            Ordering::Equal
                         }
                     }
                 }
             }
         }
+    }
+}
+
+impl PartialEq for PacketComponent {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+// This says PartialEq provides a total ordering.
+impl Eq for PacketComponent {}
+
+impl PartialOrd for PacketComponent {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -80,13 +90,13 @@ impl PacketList {
 
         // consume the opening '['
         assert_eq!('[', s_chars[index]);
-        println!(" consume {}: '{}'", index, s_chars[index]);
+        // println!(" consume {}: '{}'", index, s_chars[index]);
         index += 1;
 
         loop {
             if s_chars[index] == '[' {
                 // do the recursion thing
-                println!("[ : recurse");
+                // println!("[ : recurse");
                 let (new_index, sub_list) = PacketList::parse(s_chars, index);
                 // assert_eq!(s_chars[new_index], ']');
                 // println!(" consume {}: '{}'", new_index, s_chars[new_index]);
@@ -97,8 +107,8 @@ impl PacketList {
             }
             else if s_chars[index] == ']' {
                 // pop out of recursion
-                println!("consume {}: '{}'", index, s_chars[index]);
-                println!("] : exit recursive call.");
+                // println!("consume {}: '{}'", index, s_chars[index]);
+                // println!("] : exit recursive call.");
                 return (index+1, PacketList{list});
             }
             else if s_chars[index].is_ascii_digit() {
@@ -107,7 +117,7 @@ impl PacketList {
                 while s_chars[index].is_ascii_digit() {
                     value *= 10;
                     value += s_chars[index].to_digit(10).unwrap() as usize;
-                    println!(" consume {}: '{}'", index, s_chars[index]);
+                    // println!(" consume {}: '{}'", index, s_chars[index]);
                     index += 1;
                 }
                 // println!(" unconsume {}: '{}'", index, s_chars[index]);
@@ -118,7 +128,7 @@ impl PacketList {
             }
             else if s_chars[index] == ',' {
                 // We can ignore these
-                println!(" consume {}: '{}'", index, s_chars[index]);
+                // println!(" consume {}: '{}'", index, s_chars[index]);
                 index += 1;
             }
             else {
@@ -140,16 +150,18 @@ impl PartialEq for PacketList {
     }
 }
 
-impl PartialOrd for PacketList {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+impl Eq for PacketList {}
+
+impl Ord for PacketList {
+    fn cmp(&self, other: &Self) -> Ordering {
         let mut i = 0;
         while i < self.list.len() && i < other.list.len() {
             // compare ith items
             if self.list[i] < other.list[i] {
-                return Some(Ordering::Less);
+                return Ordering::Less;
             }
             if self.list[i] > other.list[i] {
-                return Some(Ordering::Greater);
+                return Ordering::Greater;
             }
 
             i += 1;
@@ -158,19 +170,24 @@ impl PartialOrd for PacketList {
         // one or both lists ended.
         if (i >= self.list.len()) && (i >= other.list.len()) {
             // both lists ended
-            Some(Ordering::Equal)
+            Ordering::Equal
         }
         else if i >= self.list.len() {
             // self.list ended before other.list
-            Some(Ordering::Less)
+            Ordering::Less
         }
         else {
             // other.list ended before self.list
-            Some(Ordering::Greater)
+            Ordering::Greater
         }
 
     }
+}
 
+impl PartialOrd for PacketList {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 pub struct Day13 {
@@ -190,7 +207,7 @@ impl Day13 {
 
             match line {
                 Ok(line) => {
-                    println!("parsing {}", line);
+                    // println!("parsing {}", line);
                     let trimmed = line.trim();
                     if trimmed.len() > 0 {
                         match packet1 {
@@ -212,28 +229,6 @@ impl Day13 {
                 }
             }
         }
-/*
-        while reader.()) {
-            let mut line = String::new();
-            reader.read_line(line).unwrap();
-            line.trim();
-            if line.len() == 0 {
-                break;
-            }
-            let packet1 = PacketList::new(line);
-
-            line.clear();
-            reader.read_line(line).unwrap();
-            line.trim();
-            if line.len() == 0 {
-                break;
-            }
-            let packet2 = PacketList::new(line);
-
-            let pair = (packet1, packet2);
-            pairs.push(pair);
-        }
-        */
 
         Day13 { pairs }
     }
@@ -251,6 +246,30 @@ impl Day13 {
 
         sum
     }
+
+    pub fn decode_key(&self) -> usize {
+        let mut packets: SortedVec<&PacketList> = SortedVec::new();
+        let divider1 = PacketList::new("[[2]]");
+        let divider2 = PacketList::new("[[6]]");
+
+        // throw divider packets into the empty packet list
+        packets.insert(&divider1);  
+        packets.insert(&divider2);
+
+        for (left, right) in &self.pairs {
+            packets.insert(left);
+            packets.insert(right);
+        }
+
+        // Now get index of divider packets
+        let div1_ref = &divider1;
+        let div2_ref = &divider2;
+        let index1 = packets.binary_search(&div1_ref).unwrap();
+        let index2 = packets.binary_search(&div2_ref).unwrap();
+
+        // decode key is (1-based) index1 * index2
+        (index1+1) * (index2 + 1)
+    }
 }
 
 impl Day for Day13 {
@@ -259,7 +278,7 @@ impl Day for Day13 {
     }
 
     fn part2(&self) -> Answer {
-        Answer::Number(2)
+        Answer::Number(self.decode_key())
     }
 }
 
@@ -351,5 +370,19 @@ mod tests {
         let d = Day13::load("examples/day13_example1.txt");
         let result = d.part1();
         assert_eq!(result, Answer::Number(13));
+    }
+
+    #[test]
+    fn test_decoder_key() {
+        let d = Day13::load("examples/day13_example1.txt");
+        let result = d.decode_key();
+        assert_eq!(result, 140);
+    }
+
+    #[test]
+    fn test_part2() {
+        let d = Day13::load("examples/day13_example1.txt");
+        let result = d.part2();
+        assert_eq!(result, Answer::Number(140));
     }
 }
