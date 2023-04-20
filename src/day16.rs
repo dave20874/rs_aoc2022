@@ -1,21 +1,13 @@
 use crate::day::{Day, Answer};
-use std::cmp::Ordering;
+use crate::astar::{AStarState, AStarSearch};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+
 use lazy_static::lazy_static;
 use regex::Regex;
-use priority_queue::PriorityQueue;
 
-/*
-// The state of a valve in the optimizer
-#[derive(Clone, Debug, PartialEq, Hash)]
-enum ValveState {
-    Closed,        // closed since beginning
-    Open(usize),   // valve was opened at time given by usize
-}
-*/
-
+#[derive(Hash)]
 struct ValveInfo {
     id: usize,
     flow_rate: usize,
@@ -30,156 +22,100 @@ enum Action {
 }
 
 // The state of the whole puzzle
-#[derive(Hash)]
-struct State {
+struct State<'a> {
     time: usize,                        // elapsed time from start
     position: usize,                    // which valve we are near
     flowed: usize,                      // what's already flowed
     valve_open: Vec<bool>,
+    valve_info: &'a HashMap<usize, ValveInfo>,
 }
 
 struct Path {
     step: Vec<Action>,
 }
 
-struct Optimizer<'a> {
-    valve_info: &'a Vec<ValveInfo>,
-    in_progress: PriorityQueue<Box<State>, usize>,
-    best_value: HashMap<Box<State>, usize>,
-}
+
 
 pub struct Day16 {
     valve_ids: HashMap<String, usize>,
     valves: HashMap<usize, ValveInfo>,
 }
 
-impl Ord for State {
-    fn cmp(&self, other: &Self) -> Ordering {
-        Ordering::Equal  // TODO
-    }
-}
-
-impl PartialEq for State {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Ordering::Equal
-    }
-}
-
-// This says PartialEq provides a total ordering.
-impl Eq for State {}
-
-impl PartialOrd for State {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 // 
-impl State {
-    fn value(&self) -> usize {
-        // Return number of units flowed.
-        self.flowed
+impl<'a> AStarState for State<'a> {
+    fn is_final(&self) -> bool {
+        self.time == 30
     }
 
-    fn potential_value(&self, valve_info: &HashMap<usize, ValveInfo>) -> usize {
+    fn cost(&self) -> isize {
+        // Return number of units flowed.
+        self.flowed as isize
+    }
+
+    fn completion_estimate(&self) -> isize {
         // TODO: current value plus value if all remaining valves were opened in next time step.
         let mut unopened_rate = 0;
         let remaining_minutes = 30 - self.time - 1;
-        for n in 0..valve_info.len() {
+        for n in 0..self.valve_info.len() {
             if !self.valve_open[n] {
                 // n is a valve that could be opened.
-                unopened_rate += valve_info.get(&n).unwrap().flow_rate;
+                unopened_rate += self.valve_info.get(&n).unwrap().flow_rate;
             }
         }
         let max_unrealized = remaining_minutes * unopened_rate;
 
-        max_unrealized + self.value()
+        max_unrealized as isize
     }
 
-    fn next_states(&self, valve_info: &HashMap<usize, ValveInfo>) -> Vec<State> {
+    fn next_states(&self) -> Vec<Box<State<'a>>> {
         // Generate all possible next states from this state.
         // At each time step we can open the local valve, if it's closed or
         // we can move to any adjacent valve.  Either way, time will advance one step.
         // (Once time reaches the limit, no further states can be reached.)
         // If opening the local valve, our position stays the same and the local
         // valve is given the current time as its open
-        let mut next_states: Vec<State> = Vec::new();
+        let mut next_states: Vec<Box<State>> = Vec::new();
+
+        // figure out how much will flow in the next second
+        let mut new_flow = 0;
+        for n in 0..self.valve_open.len() {
+            if self.valve_open[n] {
+                new_flow += self.valve_info.get(&n).unwrap().flow_rate;
+            }
+        }
 
         // are we at a valve we can open?
-        match &self.valve_states[self.position] {
-            ValveState::Closed => {
-                // Create the option where we open the valve
-                let mut new_valve_states = self.valve_states.clone();
-                new_valve_states[self.position] = ValveState::Open(self.time);
-                next_states.push(State {
-                    time: self.time+1, 
-                    position: self.position, 
-                    valve_states: new_valve_states
-                });
-            }
-            _ => ()
+        if !self.valve_open[self.position] {
+            // Create the option where we open the valve
+            let mut new_valve_open = self.valve_open.clone();
+            new_valve_open[self.position] = true;
+            let state = State {
+                time: self.time+1, 
+                flowed: self.flowed+new_flow,
+                position: self.position, 
+                valve_open: new_valve_open,
+                valve_info: self.valve_info,
+            };
+            next_states.push(Box::new(state));
         }
 
         // Try moving to a neighboring valve
-        for neighbor in &valve_info[&self.position].neighbors {
-            next_states.push(State {
+        for neighbor in &self.valve_info[&self.position].neighbors {
+            let state = State {
                 time: self.time+1,
                 position: *neighbor,
-                valve_states: self.valve_states.clone(),
-            });
+                flowed: self.flowed + new_flow,
+                valve_open: self.valve_open.clone(),
+                valve_info: self.valve_info,
+            };
+            next_states.push(Box::new(state));
         }
 
         next_states
     }
 }
 
-impl<'a> Optimizer<'a> {
-    pub fn new(valves: &'a HashMap<usize, ValveInfo>, initial: &'a State) -> Optimizer<'a> {
-        // 
-        let mut in_progress: PriorityQueue<&'a State, usize> = PriorityQueue::new();
-        let priority = initial.potential_value(valves);
-
-        in_progress.push(initial, priority);
-
-        Optimizer {valve_info: valves, in_progress: in_progress}
-    }
-
-    pub fn optimize(&'a mut self) -> usize {
-        let mut max_value = 0;
-
-        // while in_progress is not empty
-        while self.in_progress.len() > 0 {
-            // remove highest priority solution in progress
-            let (state, _priority) = self.in_progress.pop().unwrap();
-
-            // if it's current value is greater than max, increase max
-            let value = state.value();
-            max_value = max(max_value, value);
-
-            // confirm that this is still the best way we've seen to get to this state.
-            if self.best_value.get(state) > value {
-                continue;
-            }
-
-            // For each next state from this one, evaluate it and add it back
-            // to the priority queue if it's worth exploring.
-            for next in state.next_states(&self.valve_info) {
-
-            }
-            // generate all its next states
-            // for each next state
-                // if this state isn't already bested by some other state
-                // (this state is superior if at this position, time, it has either
-                // a higher current value or a higher potential value)
-                    // evaluate priority of this state
-                    // insert this state into in_progress queue
-        }
-
-        max_value
-    }
-}
-
-impl  Day16 {
+impl Day16 {
     fn get_id(&mut self, name: &str) -> usize {
         if self.valve_ids.contains_key(name) {
             *self.valve_ids.get(name).unwrap()
@@ -233,15 +169,14 @@ impl  Day16 {
 
     fn get_start(&self) -> State {
         let position_id = *self.valve_ids.get("AA").unwrap();
-        let mut valve_states: Vec<ValveState> = Vec::new();
-        for n in 0..self.valve_ids.len() {
-            valve_states.push(ValveState::Closed);
-        }
+        let mut valve_open: Vec<bool> = vec![false; self.valve_ids.len()];
 
         State {
             time: 0,
+            flowed: 0,
             position: position_id,
-            valve_states,
+            valve_open,
+            valve_info: &self.valves,
         }
     }
 }
@@ -273,9 +208,9 @@ mod tests {
         let initial = d.get_start();
         assert_eq!(initial.time, 0);
         assert_eq!(Some(&initial.position), d.valve_ids.get("AA"));
-        assert_eq!(initial.valve_states.len(), 10);
-        for n in 0..initial.valve_states.len() {
-            assert_eq!(initial.valve_states[n], ValveState::Closed);
+        assert_eq!(initial.valve_open.len(), 10);
+        for n in 0..initial.valve_open.len() {
+            assert_eq!(initial.valve_open[n], false);
         }
     }
 
@@ -283,30 +218,30 @@ mod tests {
     fn test_value_functions() {
         let d = Day16::load("examples/day16_example1.txt");
         let initial = d.get_start();
-        assert_eq!(initial.value(&d.valves), 0);
-        assert_eq!(initial.potential_value(&d.valves), 2349);
+        assert_eq!(initial.cost(), 0);
+        assert_eq!(initial.completion_estimate(), 2349);
     }
 
     #[test]
     fn test_next_states() {
         let d = Day16::load("examples/day16_example1.txt");
         let initial = d.get_start();
-        let nexts = initial.next_states(&d.valves);
+        let nexts = initial.next_states();
 
         assert_eq!(nexts.len(), 4);
 
         // First one is where we open the valve
-        assert_eq!(nexts[0].valve_states[0], ValveState::Open(0));
+        assert_eq!(nexts[0].valve_open[0], true);
         assert_eq!(nexts[0].position, 0);
 
         // Others are all moves to a new location
-        assert_eq!(nexts[1].valve_states[0], ValveState::Closed);
+        assert_eq!(nexts[1].valve_open[0], false);
         assert_eq!(nexts[1].position, *d.valve_ids.get("DD").unwrap());
 
-        assert_eq!(nexts[2].valve_states[0], ValveState::Closed);
+        assert_eq!(nexts[2].valve_open[0], false);
         assert_eq!(nexts[2].position, *d.valve_ids.get("II").unwrap());
 
-        assert_eq!(nexts[3].valve_states[0], ValveState::Closed);
+        assert_eq!(nexts[3].valve_open[0], false);
         assert_eq!(nexts[3].position, *d.valve_ids.get("BB").unwrap());
     }
     
@@ -314,29 +249,21 @@ mod tests {
     fn test_next_next_states() {
         let d = Day16::load("examples/day16_example1.txt");
         let initial = d.get_start();
-        let nexts = initial.next_states(&d.valves);
-        let nn = nexts[0].next_states(&d.valves);
+        let nexts = initial.next_states();
+        let nn = nexts[0].next_states();
 
         assert_eq!(nn.len(), 3);
 
         // All are all moves to a new location, with valve AA open
         assert_eq!(nn[0].time, 2);
-        assert_eq!(nn[0].valve_states[0], ValveState::Open(0));
+        assert_eq!(nn[0].valve_open[0], true);
         assert_eq!(nn[0].position, *d.valve_ids.get("DD").unwrap());
 
-        assert_eq!(nn[1].valve_states[0], ValveState::Open(0));
+        assert_eq!(nn[1].valve_open[0], true);
         assert_eq!(nn[1].position, *d.valve_ids.get("II").unwrap());
 
-        assert_eq!(nn[2].valve_states[0], ValveState::Open(0));
+        assert_eq!(nn[2].valve_open[0], true);
         assert_eq!(nn[2].position, *d.valve_ids.get("BB").unwrap());
     }
 
-    #[test]
-    fn test_optimizer() {
-        let d = Day16::load("examples/day16_example1.txt");
-        let initial = d.get_start();
-        let mut optimizer: Optimizer = Optimizer::new(&d.valves, &initial);
-
-        let result = optimizer.optimize();
-    }
 }

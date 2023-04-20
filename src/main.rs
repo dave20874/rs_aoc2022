@@ -19,6 +19,7 @@ mod day13;
 mod day14;
 mod day15;
 mod day16;
+mod astar;
 
 use day::{Day, Answer};
 use day1::Day1;
