@@ -3,6 +3,7 @@ use crate::astar::{AStarState, AStarSearch};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::hash::{Hash, Hasher};
 
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -22,12 +23,22 @@ enum Action {
 }
 
 // The state of the whole puzzle
+
 struct State<'a> {
     time: usize,                        // elapsed time from start
     position: usize,                    // which valve we are near
     flowed: usize,                      // what's already flowed
     valve_open: Vec<bool>,
     valve_info: &'a HashMap<usize, ValveInfo>,
+}
+
+impl<'a> Hash for State<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.time.hash(state);
+        self.position.hash(state);
+        self.flowed.hash(state);
+        self.valve_open.hash(state);
+    }
 }
 
 struct Path {
@@ -264,6 +275,18 @@ mod tests {
 
         assert_eq!(nn[2].valve_open[0], true);
         assert_eq!(nn[2].position, *d.valve_ids.get("BB").unwrap());
+    }
+
+    #[test]
+    fn test_search() {
+        let d = Day16::load("examples/day16_example1.txt");
+        let initial = d.get_start();
+
+        let mut searcher: AStarSearch<State> = AStarSearch::new();
+        searcher.set_start(initial);
+
+        let final_state = searcher.search();
+        println!("Search found {:?}", final_state);
     }
 
 }
