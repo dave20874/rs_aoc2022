@@ -1,12 +1,14 @@
 use crate::day::{Day, Answer};
 use crate::astar::{AStarState, AStarSearch};
 use std::collections::HashMap;
+use std::fmt;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::hash::{Hash, Hasher};
 
 use lazy_static::lazy_static;
 use regex::Regex;
+use std::fmt::Debug;
 
 #[derive(Hash)]
 struct ValveInfo {
@@ -23,7 +25,6 @@ enum Action {
 }
 
 // The state of the whole puzzle
-
 struct State<'a> {
     time: usize,                        // elapsed time from start
     position: usize,                    // which valve we are near
@@ -31,6 +32,28 @@ struct State<'a> {
     valve_open: Vec<bool>,
     valve_info: &'a HashMap<usize, ValveInfo>,
 }
+
+impl<'a> Debug for State<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("State")
+         .field("time", &self.time)
+         .field("position", &self.position)
+         .field("flowed", &self.flowed)
+         .field("valve_open", &self.valve_open)
+         .finish()
+    }
+}
+
+impl<'a> PartialEq for State<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.time == other.time &&
+        self.position == other.position &&
+        self.flowed == other.flowed &&
+        self.valve_open == other.valve_open
+    }
+}
+
+impl<'a> Eq for State<'a> {}
 
 impl<'a> Hash for State<'a> {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -66,7 +89,10 @@ impl<'a> AStarState for State<'a> {
     fn completion_estimate(&self) -> isize {
         // TODO: current value plus value if all remaining valves were opened in next time step.
         let mut unopened_rate = 0;
-        let remaining_minutes = 30 - self.time - 1;
+
+        let remaining_minutes = 
+            if (self.time >= 30) { 0 } 
+            else { (30 - self.time) };
         for n in 0..self.valve_info.len() {
             if !self.valve_open[n] {
                 // n is a valve that could be opened.
@@ -282,11 +308,12 @@ mod tests {
         let d = Day16::load("examples/day16_example1.txt");
         let initial = d.get_start();
 
-        let mut searcher: AStarSearch<State> = AStarSearch::new();
+        let mut searcher: AStarSearch<State> = AStarSearch::new(false);
         searcher.set_start(initial);
 
         let final_state = searcher.search();
         println!("Search found {:?}", final_state);
     }
+
 
 }

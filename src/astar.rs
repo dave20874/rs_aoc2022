@@ -18,8 +18,8 @@ where T: AStarState+Hash+Eq+Debug {
 
 impl<T> AStarSearch<T>  
 where T: AStarState+Hash+Eq+Debug {
-    pub fn new() -> AStarSearch<T> {
-        let minimize = true;  // TODO: support maximizing, too.
+    pub fn new(min: bool) -> AStarSearch<T> {
+        let minimize = min;  // TODO: support maximizing, too.
         let in_progress: PriorityQueue<T, isize> = PriorityQueue::new();
 
         AStarSearch {minimize, in_progress: in_progress}
@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn test_new_search() {
-        let mut search: AStarSearch<TestState> = AStarSearch::new();
+        let mut search: AStarSearch<TestState> = AStarSearch::new(true);
         search.set_start(TestState { moves: 0, position: 3});
         let final_state  = search.search();
         assert_eq!(final_state, Some(TestState{moves: 7, position: 10}));
