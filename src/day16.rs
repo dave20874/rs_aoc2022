@@ -13,6 +13,7 @@ use std::fmt::Debug;
 #[derive(Hash)]
 struct ValveInfo {
     id: usize,
+    name: String,
     flow_rate: usize,
     neighbors: Vec<usize>,
 }
@@ -28,9 +29,11 @@ enum Action {
 struct State<'a> {
     time: usize,                        // elapsed time from start
     position: usize,                    // which valve we are near
+    last_position: usize,               // where we were last
     flowed: usize,                      // what's already flowed
     valve_open: Vec<bool>,
     valve_info: &'a HashMap<usize, ValveInfo>,
+    sequence: Vec<String>,
 }
 
 impl<'a> Debug for State<'a> {
@@ -87,21 +90,21 @@ impl<'a> AStarState for State<'a> {
     }
 
     fn completion_estimate(&self) -> isize {
-        // TODO: current value plus value if all remaining valves were opened in next time step.
+        // current value plus value if all remaining valves were opened in next time step.
         let mut unopened_rate = 0;
 
         let remaining_minutes = 
             if (self.time >= 30) { 0 } 
             else { (30 - self.time) };
         for n in 0..self.valve_info.len() {
-            if !self.valve_open[n] {
+            if true /* !self.valve_open[n] */ {
                 // n is a valve that could be opened.
                 unopened_rate += self.valve_info.get(&n).unwrap().flow_rate;
             }
         }
         let max_unrealized = remaining_minutes * unopened_rate;
 
-        max_unrealized as isize
+        (max_unrealized + remaining_minutes) as isize
     }
 
     fn next_states(&self) -> Vec<Box<State<'a>>> {
@@ -126,26 +129,37 @@ impl<'a> AStarState for State<'a> {
             // Create the option where we open the valve
             let mut new_valve_open = self.valve_open.clone();
             new_valve_open[self.position] = true;
+            let mut seq = self.sequence.clone();
+            seq.push(format!("Open valve {}", self.valve_info[&self.position].name));
+
             let state = State {
                 time: self.time+1, 
                 flowed: self.flowed+new_flow,
                 position: self.position, 
+                last_position: self.position,
                 valve_open: new_valve_open,
                 valve_info: self.valve_info,
+                sequence: seq,
             };
             next_states.push(Box::new(state));
         }
 
         // Try moving to a neighboring valve
         for neighbor in &self.valve_info[&self.position].neighbors {
-            let state = State {
-                time: self.time+1,
-                position: *neighbor,
-                flowed: self.flowed + new_flow,
-                valve_open: self.valve_open.clone(),
-                valve_info: self.valve_info,
-            };
-            next_states.push(Box::new(state));
+            if *neighbor != self.last_position {
+                let mut seq = self.sequence.clone();
+                seq.push(format!("Move to {}", self.valve_info[neighbor].name));
+                let state = State {
+                    time: self.time+1,
+                    position: *neighbor,
+                    last_position: self.position,
+                    flowed: self.flowed + new_flow,
+                    valve_open: self.valve_open.clone(),
+                    valve_info: self.valve_info,
+                    sequence: seq,
+                };
+                next_states.push(Box::new(state));
+            }
         }
 
         next_states
@@ -171,7 +185,7 @@ impl Day16 {
         for n in neighbors {
             neighbor_ids.push(self.get_id(n));
         }
-        let valve_info = ValveInfo { id: valve_id, flow_rate, neighbors: neighbor_ids };
+        let valve_info = ValveInfo { id: valve_id, name: name.to_string(), flow_rate, neighbors: neighbor_ids };
 
         self.valves.insert(valve_id, valve_info);
     }
@@ -207,20 +221,31 @@ impl Day16 {
     fn get_start(&self) -> State {
         let position_id = *self.valve_ids.get("AA").unwrap();
         let mut valve_open: Vec<bool> = vec![false; self.valve_ids.len()];
+        let mut seq = Vec::new();
+        seq.push(format!("Start at {}.", self.valves[&position_id].name));
 
         State {
             time: 0,
             flowed: 0,
             position: position_id,
+            last_position: position_id,
             valve_open,
             valve_info: &self.valves,
+            sequence: seq,
         }
     }
 }
 
 impl<'a> Day for Day16 {
     fn part1(&self) -> Answer {
-        Answer::Number(1)
+        let initial = self.get_start();
+
+        let mut searcher: AStarSearch<State> = AStarSearch::new(false);
+        searcher.set_start(initial);
+
+        let final_state = searcher.search().unwrap();
+
+        Answer::Number(final_state.flowed)
     }
 
     fn part2(&self) -> Answer {
@@ -304,6 +329,32 @@ mod tests {
     }
 
     #[test]
+    fn test_next_next_states2() {
+        let d = Day16::load("examples/day16_example1.txt");
+        let initial = d.get_start();
+        let nexts = initial.next_states();
+        let nn = nexts[1].next_states();  // next states from closed valve at DD.
+
+        assert_eq!(nn.len(), 4);
+
+        // First one is where we open the valve
+        let valve_id_dd = *d.valve_ids.get("DD").unwrap();
+        assert_eq!(nn[0].valve_open[valve_id_dd], true);
+        assert_eq!(nn[0].position, valve_id_dd);
+
+        // All are all moves to a new location, with valve DD cstill losed
+        assert_eq!(nn[1].time, 2);
+        assert_eq!(nn[1].valve_open[valve_id_dd], false);
+        assert_eq!(nn[1].position, *d.valve_ids.get("CC").unwrap());
+
+        assert_eq!(nn[2].valve_open[valve_id_dd], false);
+        assert_eq!(nn[2].position, *d.valve_ids.get("AA").unwrap());
+
+        assert_eq!(nn[3].valve_open[valve_id_dd], false);
+        assert_eq!(nn[3].position, *d.valve_ids.get("EE").unwrap());
+    }
+
+    #[test]
     fn test_search() {
         let d = Day16::load("examples/day16_example1.txt");
         let initial = d.get_start();
@@ -311,8 +362,20 @@ mod tests {
         let mut searcher: AStarSearch<State> = AStarSearch::new(false);
         searcher.set_start(initial);
 
-        let final_state = searcher.search();
-        println!("Search found {:?}", final_state);
+        let final_state = searcher.search().unwrap();
+        // println!("Search found {:?}", final_state);
+        // println!("Sequence: {:?}", final_state.sequence);
+
+        // I think the connections data structure is wrong somehow.
+
+        assert_eq!(final_state.flowed, 1651);
+    }
+
+    #[test]
+    fn test_part1() {
+        let d = Day16::load("examples/day16_example1.txt");
+
+        assert_eq!(d.part1(), Answer::Number(1651));
     }
 
 

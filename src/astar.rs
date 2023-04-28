@@ -29,12 +29,12 @@ where T: AStarState+Hash+Eq+Debug {
         if self.minimize {
             // Priority queue returns the largest (most postitive) priority
             // first.  When minimizing, negate the priority to reverse this.
-            println!("Pushing {:?}, {}", s, -priority);
+            // println!("Pushing {:?}, {}", s, -priority);
             self.in_progress.push(s, -priority);
         }
         else {
             // When maximizing, 
-            println!("Pushing {:?}, {}", s, priority);
+            // println!("Pushing {:?}, {}", s, priority);
             self.in_progress.push(s, priority);
         }
     }
