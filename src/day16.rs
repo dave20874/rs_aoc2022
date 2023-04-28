@@ -18,19 +18,12 @@ struct ValveInfo {
     neighbors: Vec<usize>,
 }
 
-#[derive(Clone, Debug, PartialEq, Hash)]
-enum Action {
-    Nop,            // do nothing
-    Open,           // open the valve we are at
-    Move(usize),    // move to specified valve
-}
-
 // The state of the whole puzzle
 struct State<'a> {
     time: usize,                        // elapsed time from start
     position: usize,                    // which valve we are near
     last_position: usize,               // where we were last
-    flowed: usize,                      // what's already flowed
+    flowed: usize,                      // what will flow based on all open valves.
     valve_open: Vec<bool>,
     valve_info: &'a HashMap<usize, ValveInfo>,
     sequence: Vec<String>,
@@ -67,12 +60,6 @@ impl<'a> Hash for State<'a> {
     }
 }
 
-struct Path {
-    step: Vec<Action>,
-}
-
-
-
 pub struct Day16 {
     valve_ids: HashMap<String, usize>,
     valves: HashMap<usize, ValveInfo>,
@@ -94,17 +81,17 @@ impl<'a> AStarState for State<'a> {
         let mut unopened_rate = 0;
 
         let remaining_minutes = 
-            if (self.time >= 30) { 0 } 
-            else { (30 - self.time) };
+            if self.time >= 30 { 0 }
+            else { 30 - self.time };
         for n in 0..self.valve_info.len() {
-            if true /* !self.valve_open[n] */ {
+            if !self.valve_open[n] {
                 // n is a valve that could be opened.
                 unopened_rate += self.valve_info.get(&n).unwrap().flow_rate;
             }
         }
         let max_unrealized = remaining_minutes * unopened_rate;
 
-        (max_unrealized + remaining_minutes) as isize
+        (max_unrealized) as isize
     }
 
     fn next_states(&self) -> Vec<Box<State<'a>>> {
@@ -116,14 +103,6 @@ impl<'a> AStarState for State<'a> {
         // valve is given the current time as its open
         let mut next_states: Vec<Box<State>> = Vec::new();
 
-        // figure out how much will flow in the next second
-        let mut new_flow = 0;
-        for n in 0..self.valve_open.len() {
-            if self.valve_open[n] {
-                new_flow += self.valve_info.get(&n).unwrap().flow_rate;
-            }
-        }
-
         // are we at a valve we can open?
         if !self.valve_open[self.position] {
             // Create the option where we open the valve
@@ -131,7 +110,7 @@ impl<'a> AStarState for State<'a> {
             new_valve_open[self.position] = true;
             let mut seq = self.sequence.clone();
             seq.push(format!("Open valve {}", self.valve_info[&self.position].name));
-
+            let new_flow = (30 - self.time - 1) * self.valve_info[&self.position].flow_rate;
             let state = State {
                 time: self.time+1, 
                 flowed: self.flowed+new_flow,
@@ -153,7 +132,7 @@ impl<'a> AStarState for State<'a> {
                     time: self.time+1,
                     position: *neighbor,
                     last_position: self.position,
-                    flowed: self.flowed + new_flow,
+                    flowed: self.flowed,
                     valve_open: self.valve_open.clone(),
                     valve_info: self.valve_info,
                     sequence: seq,
@@ -220,7 +199,7 @@ impl Day16 {
 
     fn get_start(&self) -> State {
         let position_id = *self.valve_ids.get("AA").unwrap();
-        let mut valve_open: Vec<bool> = vec![false; self.valve_ids.len()];
+        let valve_open: Vec<bool> = vec![false; self.valve_ids.len()];
         let mut seq = Vec::new();
         seq.push(format!("Start at {}.", self.valves[&position_id].name));
 
@@ -361,10 +340,11 @@ mod tests {
 
         let mut searcher: AStarSearch<State> = AStarSearch::new(false);
         searcher.set_start(initial);
+        println!("Starting search.");
 
         let final_state = searcher.search().unwrap();
-        // println!("Search found {:?}", final_state);
-        // println!("Sequence: {:?}", final_state.sequence);
+        println!("Search found {:?}", final_state);
+        println!("Sequence: {:?}", final_state.sequence);
 
         // I think the connections data structure is wrong somehow.
 

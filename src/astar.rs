@@ -48,11 +48,9 @@ where T: AStarState+Hash+Eq+Debug {
 
     pub fn search(&mut self) -> Option<T> {
         let mut retval = None;
-        // We haven't found a final state yet.
-        let mut found_end = false;
 
         // while in_progress is not empty
-        while self.in_progress.len() > 0 && !found_end {
+        while self.in_progress.len() > 0 {
             // remove highest priority solution in progress
             let (state, _priority) = self.in_progress.pop().unwrap();
             println!("Popped {:?}, {}", state, _priority);
