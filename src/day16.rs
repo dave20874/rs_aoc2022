@@ -36,6 +36,7 @@ impl<'a> Debug for State<'a> {
          .field("position", &self.position)
          .field("flowed", &self.flowed)
          .field("valve_open", &self.valve_open)
+         .field("sequence", &self.sequence)
          .finish()
     }
 }
@@ -81,8 +82,8 @@ impl<'a> AStarState for State<'a> {
         let mut unopened_rate = 0;
 
         let remaining_minutes = 
-            if self.time >= 30 { 0 }
-            else { 30 - self.time };
+            if self.time >= 29 { 0 }
+            else { 30 - self.time - 1};
         for n in 0..self.valve_info.len() {
             if !self.valve_open[n] {
                 // n is a valve that could be opened.
@@ -104,7 +105,7 @@ impl<'a> AStarState for State<'a> {
         let mut next_states: Vec<Box<State>> = Vec::new();
 
         // are we at a valve we can open?
-        if !self.valve_open[self.position] {
+        if !self.valve_open[self.position] && (self.valve_info[&self.position].flow_rate > 0) {
             // Create the option where we open the valve
             let mut new_valve_open = self.valve_open.clone();
             new_valve_open[self.position] = true;
