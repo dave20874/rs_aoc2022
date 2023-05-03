@@ -53,7 +53,8 @@ where T: AStarState+Hash+Eq+Debug {
         while self.in_progress.len() > 0 {
             // remove highest priority solution in progress
             let (state, _priority) = self.in_progress.pop().unwrap();
-            println!("Popped {:?}, {}", state, _priority);
+            // println!("Popped {}. {:?}", _priority, state);
+            // println!("Queue: {}", self.in_progress.len());
 
             if state.is_final() {
                 // We found the final state!
