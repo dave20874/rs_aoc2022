@@ -1,6 +1,7 @@
 use crate::day::{Day, Answer};
-use crate::astar::{AStarState, AStarSearch};
-use std::collections::HashMap;
+use std::collections::{HashMap};
+use std::sync::Arc;
+use priority_queue::PriorityQueue;
 use std::fmt;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -11,6 +12,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use std::fmt::Debug;
 
+// ValveInfo represents the information read from the daily input file.
 #[derive(Hash)]
 struct ValveInfo {
     id: usize,
@@ -19,34 +21,200 @@ struct ValveInfo {
     neighbors: Vec<usize>,
 }
 
-// The state of the whole puzzle
-struct State<'a> {
-    ttg: usize,                        // elapsed time from start
-    agents: usize,
-    position1: usize,                    // which valve we are near
-    position2: usize,
-    last_position1: usize,               // where we were last
-    last_position2: usize,
-    flowed: usize,                      // what will flow based on all open valves.
-    valve_open: Vec<bool>,
-    valve_info: &'a HashMap<usize, ValveInfo>,
-    sequence: Vec<String>,
+// Problem represents the overall problem to be solved.  It consists of the ValveInfo above plus time and num agents.
+struct Problem<'a> {
+    period: usize,  // how long we can take
+    num_agents: usize, // how many agents can act
+    valves: &'a HashMap<usize, ValveInfo>,  // what valves exist and how they are connected.
 }
 
-#[derive(Hash)]
-struct StateKey {
-    ttg: usize,
-    position1: usize,
-    position2: usize,
-    valve_open: Vec<bool>,
-}
-
-#[derive(Debug)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+// This enum represents the action an agent can take in a given time step.
 enum Action {
     Nop,
     Open(usize),
     MoveTo(usize),
 }
+
+// This represents a solution in-progress.  It stores the actions taken at each time step by each agent.
+// Time elapsed is implied by the length of the action[N] vector.
+#[derive(Hash, PartialEq, Eq, Clone)]
+struct Solution {
+    action: Vec<Vec<Action>>, // action[N][t] is the action taken by agent N at time t
+}
+
+
+// The state of the problem at a given point in time.
+#[derive(Hash)]
+#[derive(Eq, PartialEq)]
+struct State {
+    position: Vec<usize>,              // The position of each agent
+    valve_state: Vec<bool>,            // whether each valve is open (true) or closed
+}
+
+// Note: The Solver will keep a best potential score for each state observed.  
+// If a state is re-visited with a lower potential score, that move will be pruned.
+
+// Solutions will be explored by the Solver by the following process:
+//   Take the next solution-in-progress from the priority queue.
+//   If the solution-in-progress is complete, 
+//     declare it as the optimal solution.
+//   Else
+//     For each potential next steps.
+//       Generate state and potential score for each next step.
+//       If the generated state is already recorded with a higher potential score, discard it.
+//       Store the extended extended solution using the potential score as its priority.
+//     
+
+struct Solver<'a> {
+    problem: &'a Problem<'a>,
+}
+
+impl<'a> Problem<'a> {
+    // Get the "empty" solution, representing the start state of the puzzle.
+    pub fn get_start(&self) -> Solution {
+        let mut action = Vec::new();
+        for agent_id in 0..self.num_agents {
+            action.push(Vec::new());
+        }
+        Solution { action }
+    }
+}
+
+impl Solution {
+    pub fn get_state_score(&self, problem: &Problem) -> (State, isize) {
+        // start with all valves closed, all agents at start position
+        let mut valve_state = vec!(false, problem.valves.len());  
+        let mut position = vec!(START_POS, problem.num_agents);
+        let mut ttg = problem.period;
+        let mut flow_released = 0;
+
+        // Perform all the operations in the solution to update valves, positions, ttg
+        for t in 0..self.action[0].len() {
+            for agent in 0..problem.num_agents {
+                match self.action[agent][t] {
+                    Action::Nop => {
+                        // Do nothing
+                    }
+                    Action::MoveTo(pos) => {
+                        // Move agent to new location
+                        position[agent] = pos;
+                    }
+                    Action::Open(valve) => {
+                        // Open a valve, capturing it's flow to the end
+                        valve_state[valve] = true;
+                        flow_released += problem.valves[valve].flow * (ttg - 1)
+                    }
+                }
+            }
+
+            // Update time to go
+            ttg -= 1;
+        }
+
+        // Evaluate score based on remaining closed valves.
+        let mut closed_flows = Vec::new();
+        for valve in 0..problem.valves.len() {
+            if !valve_state[valve] {
+                closed_flows.append(problem.valves[valve].flow);
+            }
+        }
+        closed_flows.sort().reverse();
+
+        // closed_flows is a sorted vec of valves that could be opened.
+        // Now assume, optimistically, that each agent will open the biggest valves
+        // on each of their subsequent turns.  This overestimates the potential flow,
+        // of course, but that's what we need to keep the algorithm stable.
+        let mut index = 0;
+        let mut potential_flow = 0;
+        while ttg > 0 {
+            for agent in 0..problem.num_agents {
+                if index < closed_flows.len() {
+                    potential_flow = closed_flows[index] * (ttg-1);
+                    index += 1;
+                }
+            }
+            ttg -= 1;
+        }
+
+        let state = State {valve_state, position };
+
+        ( state, flow_released+potential_flow )
+    }
+
+    pub fn is_complete(&self, problem: &Problem) -> bool {
+        self.action.len() == problem.period
+    }
+
+    pub fn get_next_steps(&self, problem: &Problem) -> Vec<Solution> {
+        let mut nexts = Vec::new();
+
+        let mut options: Vec<Vec<Action>> = Vec::new();
+        for agent in 0..problem.num_agents {
+            let mut agent_options = Vec::new();
+            // Can this agent open a valve?
+
+            options[agent] = agent_options;
+        }
+
+        // TODO
+
+        nexts
+    }
+}
+
+impl<'a> Solver<'a> {
+    pub fn new(problem: &'a Problem) -> Solver<'a> {
+        Solver { problem }
+    }
+
+    pub fn solve(&self) -> Option<Solution> {
+        let mut in_progress: PriorityQueue<Box<Solution>, isize> = PriorityQueue::new();
+        let mut best_score: HashMap<State, isize> = HashMap::new();
+
+        // Seed the in_progress queue and best_score map with the initial state
+        let start = Box::new(self.problem.get_start());
+        let (state, score) = start.get_state_score();
+        best_score.insert(state, score);
+        in_progress.push(start, score);
+
+        // Loop through in_progress queue until we get a solution or it goes empty
+        // (When we get a solution, it will be the one with the highest potential score)
+        while let Some((soln, score)) = in_progress.pop() {
+            // If this solution is complete, we're done.
+            if soln.is_complete() {
+                return Some(*soln.clone());
+            }
+
+            // generate all next steps from this solution
+            for next in soln.get_next_steps() {
+
+                let (state, score) = next.get_state_score();
+                let mut prune = false;
+                match best_score.get(&state) {
+                    Some(prev_score) => {
+                        if *prev_score > score {
+                            // TODO: this match is inelegant - figure out how to fix.
+                            prune = true;
+                        }
+                    }
+                    _ => ()
+                }
+
+                if !prune {
+                    best_score.insert(state, score);
+                    in_progress.push(Box::new(next), score);
+                }
+            }
+        }
+
+        // No solution was found.
+        None
+    }
+}
+
+// ==============================================================
+/*
 
 impl<'a> Debug for State<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -86,10 +254,6 @@ impl<'a> Hash for State<'a> {
     }
 }
 
-pub struct Day16 {
-    valve_ids: HashMap<String, usize>,
-    valves: HashMap<usize, ValveInfo>,
-}
 
 // 
 impl<'a> AStarState<StateKey> for State<'a> {
@@ -247,6 +411,12 @@ impl<'a> AStarState<StateKey> for State<'a> {
         next_states
     }
 }
+*/
+
+pub struct Day16 {
+    valve_ids: HashMap<String, usize>,
+    valves: HashMap<usize, ValveInfo>,
+}
 
 impl Day16 {
     fn get_id(&mut self, name: &str) -> usize {
@@ -299,71 +469,23 @@ impl Day16 {
 
         d
     }
-
-    fn get_start_p1(&self) -> State {
-        let position_id = *self.valve_ids.get("AA").unwrap();
-        let valve_open: Vec<bool> = vec![false; self.valve_ids.len()];
-        let mut seq = Vec::new();
-        seq.push(format!("Start at {}.", self.valves[&position_id].name));
-
-        State {
-            ttg: 30,
-            agents: 1,
-            flowed: 0,
-            position1: position_id,
-            last_position1: position_id,
-            position2: position_id,
-            last_position2: position_id,
-            valve_open,
-            valve_info: &self.valves,
-            sequence: seq,
-        }
-    }
-
-    fn get_start_p2(&self) -> State {
-        let position_id = *self.valve_ids.get("AA").unwrap();
-        let valve_open: Vec<bool> = vec![false; self.valve_ids.len()];
-        let mut seq = Vec::new();
-        seq.push(format!("Start at {}/{}.", 
-            self.valves[&position_id].name, 
-            self.valves[&position_id].name));
-
-        State {
-            ttg: 26,
-            agents: 2,
-            flowed: 0,
-            position1: position_id,
-            last_position1: position_id,
-            position2: position_id,
-            last_position2: position_id,
-            valve_open,
-            valve_info: &self.valves,
-            sequence: seq,
-        }
-    }
 }
 
 impl<'a> Day for Day16 {
     fn part1(&self) -> Answer {
-        let initial = self.get_start_p1();
+        let problem = Problem {period: 30, num_agents: 1, valves: &self.valves};
+        let solver = Solver { problem: &problem };
 
-        let mut searcher: AStarSearch<State, StateKey> = AStarSearch::new(false, false);
-        searcher.set_start(initial);
-
-        let final_state = searcher.search().unwrap();
-
-        Answer::Number(final_state.flowed)
+        let (final_state, final_score) = solver.solve().unwrap().get_state_score();
+        Answer::Number(final_score as usize)
     }
 
     fn part2(&self) -> Answer {
-        let initial = self.get_start_p2();
+        let problem = Problem {period: 30, num_agents: 2, valves: &self.valves};
+        let solver = Solver { problem: &problem };
 
-        let mut searcher: AStarSearch<State, StateKey> = AStarSearch::new(false, true);
-        searcher.set_start(initial);
-
-        let final_state = searcher.search().unwrap();
-
-        Answer::Number(final_state.flowed)
+        let (final_state, final_score) = solver.solve().unwrap().get_state_score();
+        Answer::Number(final_score as usize)
     }
 }
 
@@ -378,6 +500,52 @@ mod tests {
         assert_eq!(d.valves.len(), 10);
     }
 
+    #[test]
+    fn test_create_problem() {
+        let d = Day16::load("examples/day16_example1.txt");
+        let problem = Problem {period: 30, num_agents: 1, valves: &d.valves};
+        assert_eq!(problem.period, 30);
+        assert_eq!(problem.num_agents, 1);
+        assert_eq!(problem.valves.len(), 10);
+
+        let start = problem.get_start();
+        assert_eq!(start.action.len(), 1);
+        assert_eq!(start.action[0].len(), 0);
+
+        let problem2 = Problem {period: 30, num_agents: 2, valves: &d.valves};
+        assert_eq!(problem2.period, 30);
+        assert_eq!(problem2.num_agents, 2);
+        assert_eq!(problem2.valves.len(), 10);
+
+        let start2 = problem2.get_start();
+        assert_eq!(start2.action.len(), 2);
+        assert_eq!(start2.action[0].len(), 0);
+        assert_eq!(start2.action[1].len(), 0);
+    }
+
+    #[test]
+    fn test_create_solver() {
+        let d = Day16::load("examples/day16_example1.txt");
+        let problem = Problem {period: 30, num_agents: 1, valves: &d.valves};
+        let solver = Solver { problem: &problem };
+    }
+
+    #[test]
+    fn test_state_score1() {
+        let d = Day16::load("examples/day16_example1.txt");
+        let problem = Problem {period: 30, num_agents: 1, valves: &d.valves};
+
+        let start = problem.get_start();
+        let (state, score) = start.get_state_score();
+        assert_eq!(score, 99);
+        assert_eq!(state.position.len(), 1);
+        assert_eq!(state.position[0], 0);  // TODO: get id of initial position
+        assert_eq!(state.valve_state.len(), 10);
+        for n in 0..10 {
+            assert_eq!(state.valve_state[n], false);
+        }
+    }
+/* 
     #[test]
     fn test_get_start() {
         let d = Day16::load("examples/day16_example1.txt");
@@ -459,7 +627,9 @@ mod tests {
         assert_eq!(nn[0].valve_open[pos_ii], false);
         assert_eq!(nn[0].position1, *d.valve_ids.get("JJ").unwrap());
     }
+*/
 
+/*
     #[test]
     fn test_search() {
         let d = Day16::load("examples/day16_example1.txt");
@@ -506,6 +676,6 @@ mod tests {
 
         assert_eq!(d.part2(), Answer::Number(1707));
     }
-
+*/
 
 }
