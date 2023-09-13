@@ -1,6 +1,7 @@
  #[derive(PartialEq)]
  #[derive(Debug)]
  pub enum Answer {
+    None,
     Number(usize),
     Message(String),
 }
