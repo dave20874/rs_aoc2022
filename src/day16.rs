@@ -156,7 +156,8 @@ impl Solution {
 
         if problem.two_agents {
             // Can this agent open a valve?
-            if !self.state.valve_open[position] {
+            if !self.state.valve_open[position]  && 
+               problem.valves[&position].flow_rate > 0 {
                 // This agent can open a valve right here, so add that to it's options.
                 options2.push(Action::Open(position));
             }
@@ -538,7 +539,7 @@ impl<'a> Solver<'a> {
                     // Push this solution (with actual flow as priority)
                     /// visited.insert(next.state.clone());
                     let elapsed = self.problem.period - next.ttg;
-                    let priority = 20*next.flowed/elapsed + potential;  // 100 * next.flow_captured / elapsed;
+                    let priority = /* 20*next.flowed/elapsed + */ potential;  // 100 * next.flow_captured / elapsed;
                     in_progress.push(Rc::new(next), priority);
                 }
             }

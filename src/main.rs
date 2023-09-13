@@ -228,7 +228,7 @@ mod tests {
     fn test_day16() {
         let d = Day16::load("data_aoc2022/day16_input.txt");
         // assert_eq!(d.part1(), Answer::Number(1641));
-        assert_eq!(d.part2(), Answer::None); // 2076?
+        assert_eq!(d.part2(), Answer::None); // Found 2251, Limit 2686.
     }
 }
 
