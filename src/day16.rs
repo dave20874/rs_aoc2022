@@ -1,6 +1,7 @@
 use crate::day::{Day, Answer};
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::rc::Rc;
 use priority_queue::PriorityQueue;
 use std::fs::File;
@@ -66,19 +67,23 @@ impl<'a> Problem<'a> {
         // Compute distances from any valve to any valve.
         let mut distance: HashMap<(usize, usize), usize> = HashMap::new();
         for (from, valve_info) in valves {
+            // println!("Finding distances from {}", from);
             let mut visited: HashSet<usize> = HashSet::new();
-            let mut to_visit: Vec<(usize, usize)> = Vec::new();
-            to_visit.push((*from, 0));
+            let mut to_visit: VecDeque<(usize, usize)> = VecDeque::new();  // FIFO
+            to_visit.push_back((*from, 0));
             while !to_visit.is_empty() {
-                let (to, d) = to_visit.pop().unwrap();
+                let (to, d) = to_visit.pop_front().unwrap();
                 if !visited.contains(&to) {
                     // From <from> we reached <to> for the first time.
+                    // println!("    {} to {} is {}", *from, to, d);
                     distance.insert((*from, to), d);
                     visited.insert(to);
 
                     // Push all potential next steps
                     for next_to in &valves[&to].neighbors {
-                        to_visit.push((*next_to, d+1));
+                        if !visited.contains(&next_to) {
+                            to_visit.push_back((*next_to, d+1));
+                        }
                     }
                 }
             }
@@ -88,7 +93,13 @@ impl<'a> Problem<'a> {
             }
         }
 
+        /*
+        // println!("Distance matrix:");
+        for ((from, to), d) in &distance {
+            // println!("    from:{} to:{} = {}", from, to, d);
+        }
 
+        */
 
         Problem {
             period: period,
@@ -103,6 +114,23 @@ impl<'a> Problem<'a> {
     // Get the "empty" solution, representing the start state of the puzzle.
     pub fn get_start(&self) -> Solution {
         Solution::new(&self)
+    }
+
+    pub fn ttg(&self, path: &Vec<usize>) -> usize {
+        let mut ttg = self.period;
+        let mut position = self.start_position;
+        for p in path {
+            let move_dist = self.distance[&(position, *p)];
+            position = *p;
+            if ttg > move_dist {
+                ttg = ttg - move_dist - 1;
+            }
+            else {
+                ttg = 0;
+            }
+        }
+
+        ttg
     }
 }
 
@@ -134,20 +162,28 @@ impl Solution {
         // in the most effective way possible.
         let mut max_uncaptured = 0;
         let mut ttg = problem.period;
-        while ttg >= 2 && flows.len() > 0 {
+        let mut i = 0;
+        while ttg > 0 && i < flows.len() {
             // First agent opens the biggest available valve
-            let rate = flows.pop().unwrap();
-            max_uncaptured += (ttg-2)*rate;
+            let rate = flows[i];
+            i += 1;
+            max_uncaptured += (ttg-1)*rate;
 
-            if problem.two_agents {
+            if problem.two_agents && i < flows.len() {
                 // Second agent opens the next biggest available valve
-                let rate = flows.pop().unwrap();
-                max_uncaptured += (ttg-2)*rate;
+                let rate = flows[i];
+                i += 1;
+                max_uncaptured += (ttg-1)*rate;
             }
 
             // two time steps pass as we open the valve then move at least one
             // position to a next valve.
-            ttg -= 2;
+            if ttg >= 2 {
+                ttg -= 2;
+            }
+            else {
+                ttg = 0;
+            }
         }
 
         Solution { opens, flow_captured: 0, max_uncaptured }
@@ -156,19 +192,8 @@ impl Solution {
     // A solution is complete when its action sequence is as long as self.period allows.
     fn is_complete(&self, problem: &Problem) -> bool {
         for sequence in &self.opens {
-            let mut length = 0;
-            let mut position = problem.start_position;
-            for valve_id in sequence {
-                // time to move to that valve
-                length += problem.distance[&(position, *valve_id)];
-                // time to open that valve
-                length += 1;  
-
-                // Adopt new position
-                position = *valve_id;
-            }
-
-            if length < problem.period {
+            let ttg = problem.ttg(sequence);
+            if ttg > 0 {
                 return false;
             }
         }
@@ -179,19 +204,110 @@ impl Solution {
     }
 
     fn get_next_steps(&self, problem: &Problem) -> Vec<Solution> {
-        let nexts = Vec::new();
+        let mut nexts = Vec::new();
 
-        // TODO: Compute the list of valves that are open and non-zero flow rate.
-        // TODO: Figure out which agent to "move".  (The one with most ttg or lowest index)
-        // TODO: Have the selected agent go next to each of the open valves.
+        // Compute the list of valves that are open and non-zero flow rate.
+        let mut closed_valves: Vec<usize> = Vec::new();
+        for (valve_id, valve_info) in problem.valves {
+            let mut skip = false;
+            // skip this valve_id if it isn't a real valve with a flow rate
+            if valve_info.flow_rate == 0 { 
+                skip = true;
+            }
+            else {
+                // skip this valve_id if some agent already opened it.
+                for agent_id in 0..self.opens.len() {
+                    if self.opens[agent_id].contains(valve_id) { 
+                        skip = true;
+                        break;
+                    }
+                }
+            }
+
+            if !skip {
+                closed_valves.push(*valve_id);
+            }
+        }
+
+        // Figure out which agent to "move".  (The one with most ttg or lowest index)
+        let mut agent_id = 0;
+        let mut agent_ttg = problem.ttg(&self.opens[agent_id]);
+        for other_id in 1..self.opens.len() {
+            let other_ttg = problem.ttg(&self.opens[other_id]);
+            if other_ttg > agent_ttg {
+                agent_id = other_id;
+                agent_ttg = other_ttg;
+            }
+        }
+
+        if agent_ttg > 0 {
+            // Have the selected agent go next to each of the open valves.
+            for next_valve in closed_valves {
+                let mut next_solution = self.clone();
+                next_solution.update(agent_id, next_valve, problem);
+
+                nexts.push(next_solution);
+            }
+        }
 
         nexts
     }
 
-    fn update(&mut self, agent_id: usize, valve_id: usize) {
-        // TODO : Append a new valve id to the agent's opens vector.
-        // TODO : Re-evaluate flow captured
-        // TODO : Re-evalute max-uncaptured
+    fn update(&mut self, agent_id: usize, valve_id: usize, problem: &Problem) {
+        // Append a new valve id to the agent's opens vector.
+        self.opens[agent_id].push(valve_id);
+        // println!("Opening valve {:?}", self.opens[agent_id]);
+        let ttg = problem.ttg(&self.opens[agent_id]);
+        if ttg > 0 {
+            // println!("Capturing flow {} for ttg {}.", problem.valves[&valve_id].flow_rate, ttg);
+            self.flow_captured += (ttg) * problem.valves[&valve_id].flow_rate;
+        }
+
+        // Construct a vector of all the flow rates available
+        let mut flows: Vec<usize> = Vec::new();
+        for (_valve_id, valve_info) in problem.valves {
+            if valve_info.flow_rate > 0 {
+                flows.push(valve_info.flow_rate);
+            }
+        }
+        flows.sort();
+        flows.reverse();
+        let mut next_flow = 0;
+
+        let mut max_uncaptured = 0;
+
+        let mut agent_ttg: Vec<usize> = Vec::new();
+        for agent_id in 0..self.opens.len() {
+            agent_ttg.push(problem.ttg(&self.opens[agent_id]));
+        }
+        for sim_time in 0..problem.period {
+            let sim_ttg = problem.period - sim_time;
+
+            for agent_id in 0..self.opens.len() {
+                if sim_ttg == agent_ttg[agent_id] && next_flow < flows.len() {
+                    // This agent could take the highest available flow rate
+                    // then be occupied for two time steps
+                    max_uncaptured += flows[next_flow]*(sim_ttg);
+                    next_flow += 1;
+                    if agent_ttg[agent_id] >= 2 {
+                        agent_ttg[agent_id] -= 2;
+                    }
+                    else {
+                        agent_ttg[agent_id] = 0;
+                    }
+                }
+            }
+        }
+
+        self.max_uncaptured = max_uncaptured;
+/*
+        println!("Update produced {:?}, captured: {}, max uncaptured: {}",
+            self.opens[0],
+            self.flow_captured,
+            self.max_uncaptured,
+            );
+            */
+        
     }
 }
 
@@ -216,18 +332,19 @@ impl<'a> Solver<'a> {
             let potential = soln.flow_captured + soln.max_uncaptured;
 
             // Report in_progress queue size, ttg, flowed, potential
-            println!("Depth: {}, captured: {}, Potential: {}, Best: {}", 
-                in_progress.len(),
-                soln.flow_captured, 
-                potential,
-                best_solution.flow_captured);
+            // println!("Depth: {}, captured: {}, Potential: {}, Best: {}", 
+            //     in_progress.len(),
+            //     soln.flow_captured, 
+            //     potential,
+            //     best_solution.flow_captured);
+            // println!("    Soln: {:?}", soln.opens[0]);
 
             // Reject this solution if we already have a better one.
             if potential <= best_solution.flow_captured { continue; }
 
             // Is this solution better than the best so far?
             if soln.flow_captured > best_solution.flow_captured {
-                println!("New best: {:?}", soln.flow_captured);
+                // println!("New best: {:?}", soln.flow_captured);
                 best_solution = soln.clone();
 
                 // TODO? Delete entries from in_progress that have less potential than this new find.
@@ -377,8 +494,10 @@ mod tests {
         assert_eq!(start.opens.len(), 1);
         assert_eq!(start.opens[0].len(), 0);
         assert_eq!(start.flow_captured, 0);
-        let expected = 29*22 + 27*21 + 25*20 + 23*13 + 21*3 + 19*2;
+        let expected = 28*22 + 26*21 + 24*20 + 22*13 + 20*3 + 18*2;
         assert_eq!(start.max_uncaptured, expected);
+        let start_position = d.valve_ids.get("AA").unwrap();
+        assert_eq!(*start_position, 0);
 
         let problem2 = Problem::new(26, true, &d.valves, *start_position);
         assert_eq!(problem2.period, 26);
@@ -390,7 +509,10 @@ mod tests {
         assert_eq!(start2.opens[0].len(), 0);
         assert_eq!(start2.opens[1].len(), 0);
         assert_eq!(start2.flow_captured, 0);
-        assert_eq!(start2.max_uncaptured, 12);  // FIX
+        let expected = 24*22 + 24*21 + 22*20 + 22*13 + 20*3 + 20*2;
+        assert_eq!(start2.max_uncaptured, expected);
+        let start_position = d.valve_ids.get("AA").unwrap();
+        assert_eq!(*start_position, 0);
     }
 
     #[test]
@@ -401,33 +523,6 @@ mod tests {
         let _solver = Solver { problem: &problem };
     }
 
-    #[test]
-    fn test_state_score1() {
-        let d = Day16::load("examples/day16_example1.txt");
-        let start_position = d.valve_ids.get("AA").unwrap();
-        let problem = Problem::new(30, false, &d.valves, *start_position);
-
-        let start = problem.get_start();
-        let max_potential = start.max_uncaptured;
-        let expected = 29*22 + 27*21 + 25*20 + 23*13 + 21*3 + 19*2;
-        assert_eq!(max_potential, expected);
-        let start_position = d.valve_ids.get("AA").unwrap();
-        assert_eq!(*start_position, 0);
-    }
-
-    #[test]
-    fn test_state_score2() {
-        let d = Day16::load("examples/day16_example1.txt");
-        let start_position = d.valve_ids.get("AA").unwrap();
-        let problem = Problem::new(26, true, &d.valves, *start_position);
-
-        let start = problem.get_start();
-        let max_potential = start.max_uncaptured;
-        let expected = 25*22 + 25*21 + 23*20 + 23*13 + 21*3 + 21*2;
-        assert_eq!(max_potential, expected);
-        let start_position = d.valve_ids.get("AA").unwrap();
-        assert_eq!(*start_position, 0);
-    }
 /* 
     #[test]
     fn test_get_start() {
