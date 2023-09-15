@@ -10,7 +10,6 @@ use std::hash::Hash;
 
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::fmt::Debug;
 
 // ValveInfo represents the information read from the daily input file.
 #[derive(Hash)]
@@ -26,7 +25,6 @@ struct Problem<'a> {
     period: usize,  // how long we can take
     two_agents: bool, // true if two agents are active
     valves: &'a HashMap<usize, ValveInfo>,  // what valves exist and how they are connected.
-    real_valves: Vec<usize>,  // valve ids with non-zero flow rate.
     start_position: usize,  // What position the agents start at.
     distance: HashMap<(usize, usize), usize>,  // distance[(a,b)] = Number of moves from a to b.
 }
@@ -59,14 +57,9 @@ struct Solver<'a> {
 impl<'a> Problem<'a> {
     pub fn new(period: usize, two_agents: bool, valves: &'a HashMap<usize, ValveInfo>, start_position: usize) -> Problem {
 
-        
-        // Create a vector of the valves with non-zero flow rates.  These are the
-        // only ones we need to visit and open.
-        let mut real_valves: Vec<usize> = Vec::new();
-
         // Compute distances from any valve to any valve.
         let mut distance: HashMap<(usize, usize), usize> = HashMap::new();
-        for (from, valve_info) in valves {
+        for from in valves.keys() {
             // println!("Finding distances from {}", from);
             let mut visited: HashSet<usize> = HashSet::new();
             let mut to_visit: VecDeque<(usize, usize)> = VecDeque::new();  // FIFO
@@ -87,25 +80,12 @@ impl<'a> Problem<'a> {
                     }
                 }
             }
-
-            if valves[from].flow_rate > 0 {
-                real_valves.push(*from);
-            }
         }
-
-        /*
-        // println!("Distance matrix:");
-        for ((from, to), d) in &distance {
-            // println!("    from:{} to:{} = {}", from, to, d);
-        }
-
-        */
 
         Problem {
             period: period,
             two_agents: two_agents,
             valves: valves,
-            real_valves: real_valves,
             start_position: start_position,
             distance: distance,
         }
@@ -143,7 +123,7 @@ impl Solution {
         // First agent's list of opens is empty.
         opens.push(Vec::new());
 
-        if (problem.two_agents) {
+        if problem.two_agents {
             // Second agent's list of opens is empty.
             opens.push(Vec::new());
         }
@@ -163,17 +143,17 @@ impl Solution {
         let mut max_uncaptured = 0;
         let mut ttg = problem.period;
         let mut i = 0;
-        while ttg > 0 && i < flows.len() {
+        while ttg >= 2 && i < flows.len() {
             // First agent opens the biggest available valve
             let rate = flows[i];
             i += 1;
-            max_uncaptured += (ttg-1)*rate;
+            max_uncaptured += (ttg-2)*rate;
 
             if problem.two_agents && i < flows.len() {
                 // Second agent opens the next biggest available valve
                 let rate = flows[i];
                 i += 1;
-                max_uncaptured += (ttg-1)*rate;
+                max_uncaptured += (ttg-2)*rate;
             }
 
             // two time steps pass as we open the valve then move at least one
@@ -300,13 +280,6 @@ impl Solution {
         }
 
         self.max_uncaptured = max_uncaptured;
-/*
-        println!("Update produced {:?}, captured: {}, max uncaptured: {}",
-            self.opens[0],
-            self.flow_captured,
-            self.max_uncaptured,
-            );
-            */
         
     }
 }
@@ -315,7 +288,7 @@ impl Solution {
 // TODO: Make Generic to Problem Trait.
 impl<'a> Solver<'a> {
 
-    pub fn solve2(&self) -> Option<Rc<Solution>> {
+    pub fn solve(&self) -> Option<Rc<Solution>> {
         let mut in_progress: PriorityQueue<Rc<Solution>, usize> = PriorityQueue::new();
 
         // Seed the in_progress queue and best_score map with the initial state
@@ -362,12 +335,6 @@ impl<'a> Solver<'a> {
                     let priority = potential;
                     in_progress.push(Rc::new(next), priority);
                 }
-            }
-            else {
-                // The first complete solution is the best.
-                // (Since potential is used as priority, all remaining entries in the queue have potential less or equal to this one.)
-                println!("==== COMPLETE =====================");
-                break;
             }
         }
 
@@ -442,7 +409,7 @@ impl<'a> Day for Day16 {
         
         let solver = Solver { problem: &problem };
 
-        let soln= solver.solve2();
+        let soln= solver.solve();
         match soln {
             Some(soln) => {
                 Answer::Number(soln.flow_captured)
@@ -458,7 +425,7 @@ impl<'a> Day for Day16 {
         let problem = Problem::new(26, true, &self.valves, *start_position);
         let solver = Solver { problem: &problem };
 
-        let soln= solver.solve2();
+        let soln= solver.solve();
         match soln {
             Some(soln) => {
                 Answer::Number(soln.flow_captured)
@@ -615,7 +582,7 @@ mod tests {
         let problem = Problem::new(30, false, &d.valves, *start_position);
 
         let solver = Solver { problem: &problem };
-        let solution = solver.solve2().unwrap();
+        let solution = solver.solve().unwrap();
 
         println!("Search found {:?}", solution.opens[0]);
         println!("Flow Captured: {:?}", solution.flow_captured);
@@ -632,7 +599,7 @@ mod tests {
         let problem = Problem::new(26, true, &d.valves, *start_position);
 
         let solver = Solver { problem: &problem };
-        let solution = solver.solve2().unwrap();
+        let solution = solver.solve().unwrap();
 
         println!("Search found {:?}, {:?}", solution.opens[0], solution.opens[1]);
         println!("Flow Captured: {:?}", solution.flow_captured);
