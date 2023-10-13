@@ -238,8 +238,8 @@ mod tests {
     #[test]
     fn test_day17() {
         let d = Day17::load("data_aoc2022/day17_input.txt");
-        assert_eq!(d.part1(), Answer::Number(1));
-        assert_eq!(d.part2(), Answer::Number(2));
+        assert_eq!(d.part1(), Answer::Number(3069));
+        // assert_eq!(d.part2(), Answer::Number(2));
     }
 }
 

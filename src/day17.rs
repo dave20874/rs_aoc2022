@@ -13,8 +13,6 @@ enum Rock {
     Rock5,
 }
 
-
-
 lazy_static! {
     // Rock 1 : 
     // ####
@@ -100,6 +98,16 @@ impl Rock {
             Rock::Rock5 => ROCK5_HEIGHT,
         }
     }
+
+    fn next(&self) -> Rock {
+        match &self {
+            Rock::Rock1 => Rock::Rock2,
+            Rock::Rock2 => Rock::Rock3,
+            Rock::Rock3 => Rock::Rock4,
+            Rock::Rock4 => Rock::Rock5,
+            Rock::Rock5 => Rock::Rock1,
+        }
+    }
 }
 
 struct Chamber {
@@ -118,7 +126,7 @@ impl Chamber {
 struct Sim {
     time: usize,
     wind_index: usize,
-    wind_pattern: String,
+    wind_vec: Vec<bool>,  // true is wind to the left.
     next_rock: Rock,
 
     chamber: Chamber,
@@ -127,11 +135,21 @@ struct Sim {
 impl Sim {
     fn new(wind_pattern: &str) -> Sim {
         let chamber = Chamber::new();
+        let mut wind_vec: Vec<bool> = Vec::new();
+
+        for c in wind_pattern.chars() {
+            if c == '<' {
+                wind_vec.push(true);
+            }
+            else {
+                wind_vec.push(false);
+            }
+        }
 
         Sim { 
             time: 0, 
             wind_index: 0,
-            wind_pattern: wind_pattern.to_string(), 
+            wind_vec, 
             next_rock: Rock::Rock1, 
             chamber
         }
@@ -139,21 +157,27 @@ impl Sim {
 
     fn drop_rock(&mut self) {
         // start rock with left edge two spaces from wall, three steps above top of chamber.
-        let mut position: (isize, isize) = (2, self.chamber.height+3);
+        let mut position: (isize, isize) = (2, self.chamber.height as isize + 3);
         let mut blocked = false;
+
+        // println!("Dropping {:?}", self.next_rock);
 
         while !blocked {
             // get new position from wind shift
             let mut new_position = position;
-            if self.wind_pattern.get_c(self.wind_index) == '<' { 
+            if self.wind_vec[self.wind_index] {
+                // move left 
+                // println!("Moving left");
                 new_position.0 -= 1;
             }
             else {
+                // move right
+                // println!("Moving right");
                 new_position.0 += 1;
             };
             self.time += 1;
             self.wind_index += 1;
-            if self.wind_index >= self.wind_pattern.len() {
+            if self.wind_index >= self.wind_vec.len() {
                 self.wind_index = 0;
             }
 
@@ -161,49 +185,62 @@ impl Sim {
             let mut interfered = false;
             for (x, y) in self.next_rock.get_occupancy() {
                 let component_pos = (new_position.0+x, new_position.1+y);
-                if (component.x < 0) || 
-                    (component.x >= 7) ||
-                    (self.chamber.contains(component_pos)) {
+                if (component_pos.0 < 0) || 
+                    (component_pos.0 >= 7) ||
+                    (self.chamber.occupied.contains(&component_pos)) {
                         interfered = true;
                 }
             }
             
             // If no interference, adopt the shifted position, otherwise don't shift.
             if interfered {
-                new_position = position;
+                // println!("Horizontal move blocked.");
+            }
+            else {
+                position = new_position;
             }
 
+            // println!("{:?}", position);
+
             // get new position from dropping one level
+            // println!("Moving down");
+            new_position = position;
             new_position.1 -= 1;
 
             // check for interference from bottom or other blocks
             let mut interfered = false;
             for (x, y) in self.next_rock.get_occupancy() {
                 let component_pos = (new_position.0+x, new_position.1+y);
-                if (component.y < 0) || 
-                    (self.chamber.contains(component_pos)) {
+                if (component_pos.1 < 0) || 
+                    (self.chamber.occupied.contains(&component_pos)) {
                         interfered = true;
                 }
             }
             if interfered {
-                // Undo the drop
-                new_position = position;
-
-                // Solidify in this position
-
+                // Solidify in the pre-moved position
+                // println!("Moving down blocked.");
                 blocked = true;
             }
             else {
                 // adopt the dropped position and repeat this loop
                 position = new_position;
             }
+            // println!("{:?}", position);
         }
 
         // Solidify the block in its rest position
-        // TODO
+        // println!("solidifying at {:?}", position);
+        for (x, y) in self.next_rock.get_occupancy() {
+            let component_pos = (position.0+x, position.1+y);
+            self.chamber.occupied.insert(component_pos);
+        }
 
         // Update the recorded height of the chamber
-        // TODO
+        if position.1 as usize + self.next_rock.get_height() > self.chamber.height {
+            self.chamber.height = position.1 as usize + self.next_rock.get_height();
+        }
+
+        self.next_rock = self.next_rock.next();
     }
 }
 
@@ -226,7 +263,13 @@ impl Day17 {
 
 impl Day for Day17 {
     fn part1(&self) -> Answer {
-        Answer::Number(1)
+        let mut sim = Sim::new(&self.winds);
+
+        for _count in 0..2022 {
+            sim.drop_rock();
+        }
+
+        Answer::Number(sim.chamber.height)
     }
 
     fn part2(&self) -> Answer {
@@ -270,17 +313,54 @@ mod tests {
         assert_eq!(0, sim.chamber.occupied.len());
         assert_eq!(0, sim.chamber.height);
         assert_eq!(Rock::Rock1, sim.next_rock);
-        assert_eq!(8, sim.wind_pattern.len());
+        assert_eq!(8, sim.wind_vec.len());
         assert_eq!(0, sim.time);
     }
 
     #[test]
     fn test_drop_rock1() {
         let d = Day17::load("examples/day17_example1.txt");
-        let sim = Sim::new(&d.winds);
+        let mut sim = Sim::new(&d.winds);
 
         sim.drop_rock();
 
         assert_eq!(sim.chamber.height, 1);
+        assert_eq!(sim.time, 4);
+    }
+
+    #[test]
+    fn test_drop_rock2() {
+        let d = Day17::load("examples/day17_example1.txt");
+        let mut sim = Sim::new(&d.winds);
+
+        sim.drop_rock();
+        sim.drop_rock();
+
+        assert_eq!(sim.chamber.height, 4);
+        assert_eq!(sim.time, 8);
+    }
+
+    #[test]
+    fn test_drop_rocks_10() {
+        let d = Day17::load("examples/day17_example1.txt");
+        let mut sim = Sim::new(&d.winds);
+
+        for _count in 0..10 {
+            sim.drop_rock();
+        }
+
+        assert_eq!(sim.chamber.height, 17);
+    }
+
+    #[test]
+    fn test_drop_rocks_2022() {
+        let d = Day17::load("examples/day17_example1.txt");
+        let mut sim = Sim::new(&d.winds);
+
+        for _count in 0..2022 {
+            sim.drop_rock();
+        }
+
+        assert_eq!(sim.chamber.height, 3068);
     }
 }
