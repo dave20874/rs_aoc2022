@@ -1,8 +1,6 @@
 use crate::day::{Day, Answer};
-use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use lazy_static::lazy_static;
 
 #[derive(Debug, PartialEq)]
 enum Rock {
@@ -13,64 +11,41 @@ enum Rock {
     Rock5,
 }
 
-lazy_static! {
-    // Rock 1 : 
-    // ####
-    static ref ROCK1_OCCUPANCY: HashSet<(isize, isize)> = {
-        let s = HashSet::from_iter(vec! { 
-            (0, 0), (1, 0), (2, 0), (3, 0) 
-        });
+// Rock shapes are represented as U32, with the four bytes representing four potential layers of height.
+// In each byte, the MSB is unused (as the chamber is only 7 units wide.)
+// Rock shapes are defined here with two open spaces to the left of the left-most rock edge so that
+// these are in the rock's initial position when falling.
+// Rock 1:
+// ####
+const ROCK1_OCCUPANCY: u32 = 0b_00000000_00000000_00000000_00011110;
 
-        s
-    };
+// Rock 2:
+// .#.
+// ###
+// .#.
+const ROCK2_OCCUPANCY: u32 = 0b_00000000_00001000_00011100_00001000;
 
-    // Rock 2 :
-    // .#.
-    // ###
-    // .#.
-    static ref ROCK2_OCCUPANCY: HashSet<(isize, isize)> = {
-        let s = HashSet::from_iter(vec! { 
-            (1, 0), (0, 1), (1, 1), (2, 1), (1, 2) 
-        });
-        s
-    };
+// Rock 3:
+// ..#
+// ..#
+// ###
+const ROCK3_OCCUPANCY: u32 = 0b_00000000_00000100_00000100_00011100;
 
-    // Rock 3 :
-    // ..#
-    // ..#
-    // ###
-    static ref ROCK3_OCCUPANCY: HashSet<(isize, isize)> = {
-        let s = HashSet::from_iter(vec! { 
-            (0, 0), (1, 0), (2, 0), (2, 1), (2, 2)
-        });
+// Rock 4 :
+// #
+// #
+// #
+// #
+const ROCK4_OCCUPANCY: u32 = 0b_00010000_00010000_00010000_00010000;
 
-        s
-    };
+// Rock 5 :
+// ##
+// ##
+const ROCK5_OCCUPANCY: u32 = 0b_00000000_00000000_00011000_00011000;
 
-    // Rock 4 :
-    // #
-    // #
-    // #
-    // #
-    static ref ROCK4_OCCUPANCY: HashSet<(isize, isize)> = {
-        let s = HashSet::from_iter(vec! { 
-            (0, 0), (0, 1), (0, 2), (0, 3) 
-        });
-
-        s
-    };
-
-    // Rock 5 :
-    // ##
-    // ##
-    static ref ROCK5_OCCUPANCY: HashSet<(isize, isize)> = {
-        let s = HashSet::from_iter(vec! { 
-            (0, 0), (1, 0), (0, 1), (1, 1) 
-        });
-
-        s
-    };
-}
+// Test for a rock against leftmost edge
+const CHAMBER_LEFTMOST: u32  = 0b_01000000_01000000_01000000_01000000;
+const CHAMBER_RIGHTMOST: u32 = 0b_00000001_00000001_00000001_00000001;
 
 const ROCK1_HEIGHT: usize = 1;
 const ROCK2_HEIGHT: usize = 3;
@@ -79,13 +54,13 @@ const ROCK4_HEIGHT: usize = 4;
 const ROCK5_HEIGHT: usize = 2;
 
 impl Rock {
-    fn get_occupancy(&self) -> &HashSet<(isize, isize)> {
+    fn get_occupancy(&self) -> u32 {
         match &self {
-            Rock::Rock1 => { &ROCK1_OCCUPANCY },
-            Rock::Rock2 => { &ROCK2_OCCUPANCY },
-            Rock::Rock3 => { &ROCK3_OCCUPANCY },
-            Rock::Rock4 => { &ROCK4_OCCUPANCY },
-            Rock::Rock5 => { &ROCK5_OCCUPANCY },
+            Rock::Rock1 => { ROCK1_OCCUPANCY },
+            Rock::Rock2 => { ROCK2_OCCUPANCY },
+            Rock::Rock3 => { ROCK3_OCCUPANCY },
+            Rock::Rock4 => { ROCK4_OCCUPANCY },
+            Rock::Rock5 => { ROCK5_OCCUPANCY },
         }
     }
 
@@ -111,13 +86,13 @@ impl Rock {
 }
 
 struct Chamber {
-    occupied: HashSet<(isize, isize)>,
+    occupied: Vec<u8>,
     height: usize,
 }
 
 impl Chamber {
     fn new() -> Chamber {
-        let occupied: HashSet<(isize, isize)> = HashSet::new();
+        let occupied: Vec<u8> = Vec::new();
         
         Chamber { occupied, height: 0 }
     }
@@ -157,87 +132,80 @@ impl Sim {
 
     fn drop_rock(&mut self) {
         // start rock with left edge two spaces from wall, three steps above top of chamber.
-        let mut position: (isize, isize) = (2, self.chamber.height as isize + 3);
-        let mut blocked = false;
+        let mut rock = self.next_rock.get_occupancy();
+        let mut obstacles: u32 = 0;
+        let mut level = self.chamber.height + 3;
 
         // println!("Dropping {:?}", self.next_rock);
 
+        let mut blocked = false;
         while !blocked {
-            // get new position from wind shift
-            let mut new_position = position;
+            // shift rock left or right, if possible
             if self.wind_vec[self.wind_index] {
-                // move left 
-                // println!("Moving left");
-                new_position.0 -= 1;
+                if (rock & CHAMBER_LEFTMOST) == 0 {
+                    if (rock << 1) & obstacles == 0 {
+                        rock = rock << 1;
+                    }
+                }
             }
             else {
-                // move right
-                // println!("Moving right");
-                new_position.0 += 1;
-            };
+                if (rock & CHAMBER_RIGHTMOST) == 0 {
+                    if (rock >> 1) & obstacles == 0 {
+                        rock = rock >> 1;
+                    }
+                }
+            }
+
+            // update time
             self.time += 1;
             self.wind_index += 1;
             if self.wind_index >= self.wind_vec.len() {
                 self.wind_index = 0;
             }
 
-            // check for interference from wall or other blocks
-            let mut interfered = false;
-            for (x, y) in self.next_rock.get_occupancy() {
-                let component_pos = (new_position.0+x, new_position.1+y);
-                if (component_pos.0 < 0) || 
-                    (component_pos.0 >= 7) ||
-                    (self.chamber.occupied.contains(&component_pos)) {
-                        interfered = true;
-                }
-            }
-            
-            // If no interference, adopt the shifted position, otherwise don't shift.
-            if interfered {
-                // println!("Horizontal move blocked.");
-            }
-            else {
-                position = new_position;
-            }
-
             // println!("{:?}", position);
 
-            // get new position from dropping one level
+            // Drop down one level if possible.
             // println!("Moving down");
-            new_position = position;
-            new_position.1 -= 1;
+            if level > 0 {
+                let new_level = level-1;
+                obstacles <<= 8;
+                if new_level < self.chamber.occupied.len() {
+                    obstacles |= self.chamber.occupied[new_level] as u32;
+                }
 
-            // check for interference from bottom or other blocks
-            let mut interfered = false;
-            for (x, y) in self.next_rock.get_occupancy() {
-                let component_pos = (new_position.0+x, new_position.1+y);
-                if (component_pos.1 < 0) || 
-                    (self.chamber.occupied.contains(&component_pos)) {
-                        interfered = true;
+                if rock & obstacles != 0 {
+                    // The rock hit an obstacle moving down.
+                    blocked = true;
+                }
+                else {
+                    // no interference, adopt the new level
+                    level = new_level;
                 }
             }
-            if interfered {
-                // Solidify in the pre-moved position
-                // println!("Moving down blocked.");
+            else {
+                // hit the bottom of the chamber
                 blocked = true;
             }
-            else {
-                // adopt the dropped position and repeat this loop
-                position = new_position;
-            }
-            // println!("{:?}", position);
         }
 
         // Solidify the block in its rest position
-        // println!("solidifying at {:?}", position);
-        for (x, y) in self.next_rock.get_occupancy() {
-            let component_pos = (position.0+x, position.1+y);
-            self.chamber.occupied.insert(component_pos);
+        // println!("solidifying at {:?}", position)
+        let mut rock_cross_section = rock;
+        for h in level..level+4 {
+            let plane: u8 = (rock_cross_section & 0xFF) as u8;
+            if h >= self.chamber.occupied.len() {
+                self.chamber.occupied.push(plane);
+            }
+            else {
+                self.chamber.occupied[h] |= plane;
+            }
+            rock_cross_section >>= 8;
         }
 
         // Update the recorded height of the chamber
-        if position.1 as usize + self.next_rock.get_height() > self.chamber.height {
-            self.chamber.height = position.1 as usize + self.next_rock.get_height();
+        if level + self.next_rock.get_height() > self.chamber.height {
+            self.chamber.height = level + self.next_rock.get_height();
         }
 
         self.next_rock = self.next_rock.next();
@@ -290,19 +258,19 @@ mod tests {
 
     #[test]
     fn test_rocks() {
-        assert_eq!(Rock::Rock1.get_occupancy().len(), 4);
+        assert_eq!(Rock::Rock1.get_occupancy(), ROCK1_OCCUPANCY);
         assert_eq!(Rock::Rock1.get_height(), 1);
 
-        assert_eq!(Rock::Rock2.get_occupancy().len(), 5);
+        assert_eq!(Rock::Rock2.get_occupancy(), ROCK2_OCCUPANCY);
         assert_eq!(Rock::Rock2.get_height(), 3);
 
-        assert_eq!(Rock::Rock3.get_occupancy().len(), 5);
+        assert_eq!(Rock::Rock3.get_occupancy(), ROCK3_OCCUPANCY);
         assert_eq!(Rock::Rock3.get_height(), 3);
 
-        assert_eq!(Rock::Rock4.get_occupancy().len(), 4);
+        assert_eq!(Rock::Rock4.get_occupancy(), ROCK4_OCCUPANCY);
         assert_eq!(Rock::Rock4.get_height(), 4);
 
-        assert_eq!(Rock::Rock5.get_occupancy().len(), 4);
+        assert_eq!(Rock::Rock5.get_occupancy(), ROCK5_OCCUPANCY);
         assert_eq!(Rock::Rock5.get_height(), 2);
     }
 
@@ -363,4 +331,45 @@ mod tests {
 
         assert_eq!(sim.chamber.height, 3068);
     }
+
+
+    #[test]
+    fn test_drop_rocks_1b() {
+        let d = Day17::load("examples/day17_example1.txt");
+        let mut sim = Sim::new(&d.winds);
+
+        for _count in 0..1000000000 {
+            sim.drop_rock();
+        }
+
+        assert_eq!(sim.chamber.height, 3068);
+    }
+
+/*
+    #[test]
+    fn test_input_len() {
+        let d = Day17::load("data_aoc2022/day17_input.txt");
+
+        assert_eq!(d.winds.len(), 10);
+    }
+
+    #[test]
+    fn test_periodicity() {
+        let d = Day17::load("data_aoc2022/day17_input.txt");
+        let period = d.winds.len() * 5;
+        let mut sim = Sim::new(&d.winds);
+
+        let mut h = 0;
+        for periods in 0..100 {
+            for _n in 0..period {
+                sim.drop_rock();
+            }
+            let prev_h = h;
+            h = sim.chamber.height; 
+            println!("After {:?} periods, height is {:?}, change: {:?}", periods, h, h-prev_h);
+        }
+
+        assert!(true);
+    }
+    */
 }
