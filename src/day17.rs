@@ -88,23 +88,31 @@ impl Rock {
 struct Chamber {
     occupied: Vec<u8>,
     height: usize,
+    collapsed: usize,
 }
 
 impl Chamber {
     fn new() -> Chamber {
         let occupied: Vec<u8> = Vec::new();
         
-        Chamber { occupied, height: 0 }
+        Chamber { occupied, height: 0, collapsed: 0 }
     }
 }
 
 struct Sim {
     time: usize,
+    rocks: usize,
     wind_index: usize,
     wind_vec: Vec<bool>,  // true is wind to the left.
     next_rock: Rock,
 
     chamber: Chamber,
+
+    start_height: usize,
+    start_rocks: usize,
+    period_detected: usize,
+    periodic_growth: usize,
+    periodic_rocks: usize,
 }
 
 impl Sim {
@@ -123,10 +131,91 @@ impl Sim {
 
         Sim { 
             time: 0, 
+            rocks: 0,
             wind_index: 0,
             wind_vec, 
             next_rock: Rock::Rock1, 
-            chamber
+            chamber,
+            start_height: 0,
+            start_rocks: 0,
+            period_detected: 0,
+            periodic_growth: 0,
+            periodic_rocks: 0,
+        }
+    }
+
+    fn check_collapse(&mut self, level: usize) {
+        // Is the full chamber blocked between level and level+3?
+        let mut blocked_level = 0;
+        let mut blocked = false;
+        for h in level..level+4 {
+            if self.chamber.occupied[h-self.chamber.collapsed] == 0b_01111111 {  // WTF
+                blocked_level = h;
+                blocked = true;
+            }
+        }
+
+        if blocked {
+            // println!("Collapsing level {:?}", level);
+
+            let movement = blocked_level + 1 - self.chamber.collapsed;
+
+            // Set collapse to new level
+            self.chamber.collapsed = blocked_level+1;
+
+            // copy all uncollapsed rows down in the occupied vector
+            for n in 0..movement {
+                if n+movement < self.chamber.occupied.len() {
+                    self.chamber.occupied[n] = self.chamber.occupied[n+movement];
+                }
+                else {
+                    self.chamber.occupied[n] = 0;
+                }
+            }
+
+            // zero all rows above the new top.
+            for n in movement..self.chamber.occupied.len() {
+                self.chamber.occupied[n] = 0;
+            }
+            
+            // TODO : Try to detect repetition in the rock fall pattern.
+            // self.check_periodicity();
+        }
+    }
+
+    fn drop_periods(&mut self, periods: usize) {
+        self.time += periods * self.period_detected;
+        self.chamber.collapsed += periods * self.periodic_growth;
+        self.chamber.height += periods * self.periodic_growth;
+        self.rocks += periods * self.periodic_rocks;
+    }
+
+    fn drop_rocks(&mut self, count: usize) {
+        let mut dropped: usize = 0;
+
+        while dropped < count {
+            let to_drop = count - dropped;
+
+            if self.period_detected == 0 {
+                // The periodic input hasn't been found yet.
+                // Drop rocks individually, looking for that periodic behavior
+                self.drop_rock();
+                dropped += 1;
+            }
+            else {
+                if to_drop > self.periodic_rocks {
+                    // Figure out a number to drop virtually, all at once.
+                    let periods = to_drop / self.periodic_rocks;
+                    println!("Warp forward by {:?} periods of {:?}", periods, self.period_detected);
+                    self.drop_periods(periods);
+                    dropped += periods * self.periodic_rocks;
+                }
+                else {
+                    // Less than one period to go -- drop individually again
+                    self.drop_rock();
+                    dropped += 1;
+                }
+            }
         }
     }
 
@@ -158,6 +247,21 @@ impl Sim {
 
             // update time
             self.time += 1;
+
+            // At this point, a period is starting, record start rocks, height
+            if self.time == 5*self.wind_vec.len() {
+                self.start_height = self.chamber.height;
+                self.start_rocks = self.rocks;
+            }
+
+            // At this point, a period has fully run it's course, note period.
+            if self.time == 2 * 5*self.wind_vec.len() {
+                self.period_detected = 5 * self.wind_vec.len();
+                self.periodic_rocks = self.rocks - self.start_rocks;
+                self.periodic_growth = self.chamber.height - self.start_height;
+            }
+
+
             self.wind_index += 1;
             if self.wind_index >= self.wind_vec.len() {
                 self.wind_index = 0;
@@ -170,8 +274,14 @@ impl Sim {
             if level > 0 {
                 let new_level = level-1;
                 obstacles <<= 8;
-                if new_level < self.chamber.occupied.len() {
-                    obstacles |= self.chamber.occupied[new_level] as u32;
+                if new_level < self.chamber.occupied.len() + self.chamber.collapsed {
+                    if new_level >= self.chamber.collapsed {
+                        obstacles |= self.chamber.occupied[new_level - self.chamber.collapsed] as u32;
+                    }
+                    else {
+                        // Below the collapsed level is impassable.
+                        obstacles |= 0b_01111111;
+                    }
                 }
 
                 if rock & obstacles != 0 {
@@ -194,11 +304,11 @@ impl Sim {
         let mut rock_cross_section = rock;
         for h in level..level+4 {
             let plane: u8 = (rock_cross_section & 0xFF) as u8;
-            if h >= self.chamber.occupied.len() {
+            if h >= self.chamber.occupied.len() + self.chamber.collapsed {
                 self.chamber.occupied.push(plane);
             }
             else {
-                self.chamber.occupied[h] |= plane;
+                self.chamber.occupied[h-self.chamber.collapsed] |= plane;
             }
             rock_cross_section >>= 8;
         }
@@ -208,7 +318,12 @@ impl Sim {
             self.chamber.height = level + self.next_rock.get_height();
         }
 
+        // check whether part of the chamber is blocked off and collapse the part
+        // we need to compute with.
+        self.check_collapse(level);
+
         self.next_rock = self.next_rock.next();
+        self.rocks += 1;
     }
 }
 
@@ -233,15 +348,17 @@ impl Day for Day17 {
     fn part1(&self) -> Answer {
         let mut sim = Sim::new(&self.winds);
 
-        for _count in 0..2022 {
-            sim.drop_rock();
-        }
+        sim.drop_rocks(2022);
 
         Answer::Number(sim.chamber.height)
     }
 
     fn part2(&self) -> Answer {
-        Answer::Number(2)
+        let mut sim = Sim::new(&self.winds);
+
+        sim.drop_rocks(1_000_000_000_000_usize);
+
+        Answer::Number(sim.chamber.height)
     }
 }
 
@@ -332,26 +449,57 @@ mod tests {
         assert_eq!(sim.chamber.height, 3068);
     }
 
+    #[test]
+    fn test_drop_rock_1m() {
+        let d = Day17::load("examples/day17_example1.txt");
+        let mut sim = Sim::new(&d.winds);
+
+        for _count in 0..1000000 {
+            sim.drop_rock();
+        }
+
+        assert_eq!(sim.chamber.height, 1514288);
+    }    
+    
+    #[test]
+    fn test_drop_rocks_1m() {
+        let d = Day17::load("examples/day17_example1.txt");
+        let mut sim = Sim::new(&d.winds);
+
+        sim.drop_rocks(1000000);
+
+        assert_eq!(sim.chamber.height, 1514288);
+    }
 
     #[test]
     fn test_drop_rocks_1b() {
         let d = Day17::load("examples/day17_example1.txt");
         let mut sim = Sim::new(&d.winds);
 
-        for _count in 0..1000000000 {
-            sim.drop_rock();
-        }
+        sim.drop_rocks(1_000_000_000);
 
-        assert_eq!(sim.chamber.height, 3068);
+        assert_eq!(sim.chamber.height, 1514285720);
     }
 
-/*
+
     #[test]
-    fn test_input_len() {
-        let d = Day17::load("data_aoc2022/day17_input.txt");
+    fn test_drop_rocks_1t() {
+        let d = Day17::load("examples/day17_example1.txt");
+        let mut sim = Sim::new(&d.winds);
 
-        assert_eq!(d.winds.len(), 10);
+        sim.drop_rocks(1000000000000_usize);
+
+        assert_eq!(sim.chamber.height, 1514285714288);
     }
+
+    #[test]
+    fn test_example_len() {
+        let d = Day17::load("examples/day17_example1.txt");
+
+        assert_eq!(d.winds.len(), 40);
+    }
+
+    /*
 
     #[test]
     fn test_periodicity() {
