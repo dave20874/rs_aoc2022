@@ -8,13 +8,35 @@ use priority_queue::PriorityQueue;
 
 #[derive(Hash, std::cmp::PartialEq, std::cmp::Eq, Clone)]
 enum Action {
-    Start_Ore(usize),
-    Start_Clay(usize),
-    Start_Obsidian(usize),
-    Start_Geode(usize),
+    Start_Ore,
+    Start_Clay,
+    Start_Obsidian,
+    Start_Geode,
 }
 
 const PART1_ACTIONS: [Action; 3] = [Action::Start_Clay, Action::Start_Obsidian, Action::Start_Geode];
+
+struct ActionList {
+    action: Vec<(t, Action, count)>
+}
+
+impl ActionList {
+    pub fn new() -> ActionList {
+        ActionList { action: vec::new() }
+    }
+
+    pub fn extend(&self, t: usize, action: Action) -> Option<ActionList> {
+        // Make a new action list cloned from this one.
+
+        // Check that the time isn't less than the last time already listed.
+        // Check that if the time is equal to the last time listed, the new
+        // action type is the same or a greater type.
+
+        // Add the new action at the end
+        // If the last action is the same type, add one to its count.
+        // Otherwise, append a new entry to the vector.
+    }
+}
 
 struct SimState {
     ore_bots: usize,
@@ -53,12 +75,31 @@ impl SimState {
     }
 }
 
+struct Sim {
+    blueprint: &Blueprint,
+    // TODO
+}
+
+impl Sim {
+    pub fn new(blueprint: &Blueprint) -> Sim {
+        Sim {blueprint: blueprint}
+    }
+
+    pub fn reset(&self) {
+
+    }
+
+    pub fn run(&self) {
+        // TODO
+    }
+
+    pub fn next_action_time(&self, action: &Action);
+}
+
 #[derive(Hash, std::cmp::PartialEq, std::cmp::Eq, Clone)]
 struct Solution {
-    time: usize,
     // Each element is a time and action
     steps: Vec<(usize, Action)>,
-    geodes: usize,
 }
 
 impl Solution {
@@ -66,6 +107,12 @@ impl Solution {
         Solution {time: 0, steps: Vec::new(), geodes: 3 }
     }
 
+    // Create a new solution that extends another one by one action.
+    fn extend(&self, action: &Action, time: usize) -> Solution {
+        // TODO
+    }
+
+    /*
     fn action_time(&self, blueprint: Blueprint, action: &Action) -> Option<usize> {
         let mut retval = None;
 
@@ -163,10 +210,7 @@ impl Solution {
         None
         // TODO
     }
-
-    fn extend(&self, action: &Action, time: usize) -> Solution {
-        // TODO
-    }
+    */
 
     /*
     // Try to schedule an action at the end of this solution.
@@ -248,9 +292,6 @@ impl Solution {
     }
     */
 
-    fn geodes(&self) -> usize {
-        self.geodes
-    }
 }
 
 struct Blueprint {
@@ -288,34 +329,27 @@ impl Blueprint {
         let mut in_progress: PriorityQueue<Rc<Solution>, usize> = PriorityQueue::new();
         let empty_solution = Solution::new();
         in_progress.push(Rc::new(empty_solution), 0);
+        let mut sim = Sim::new(self);
 
         while in_progress.len() > 0 {
             // get candidate solution
             let candidate = in_progress.pop().unwrap().0;
 
-            // try to extend it with each possible action
-            let mut next_steps: Vec<Rc<Solution>> = Vec::new();
-            let mut abandon = false;
-            for a in &PART1_ACTIONS {
-                let t = candidate.action_time(a);
-                match t {
-                    Some(t) => {
-                        // Extend the candidate sequence with (t, a)
-                        let extended = candidate.extend(t, a);
-                        in_progress.push(extended, priority);
-                    }
-                    None => {
-                        // Can't extend candidate with a
-                        // Evaluate this as a potential full solution
-                        let geodes = candidate.geodes();
-                        if geodes > max_geodes {
-                            max_geodes = geodes;
-                        }
-                    }
-                }
+            // reset the simulator
+            sim.reset();
+
+            // Run the candidate solution through it.
+            let geodes = sim.run(candidate);
+            if geodes > max_geodes {
+                max_geodes = geodes;
             }
 
-            
+            for new_action in Action::Actions {
+                if let Some(t) = sim.next_action_time(new_action) {
+                    // extend the candidate with Action::Start_Clay(1) at time t
+                    in_progress.push(candidate.extend(new_action, t), geodes);
+                }
+            }
         }
 
         max_geodes * self.id
