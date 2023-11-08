@@ -8,13 +8,13 @@ use priority_queue::PriorityQueue;
 
 #[derive(Hash, std::cmp::PartialEq, std::cmp::Eq, Clone, Debug)]
 enum Action {
-    Start_Ore,
-    Start_Clay,
-    Start_Obsidian,
-    Start_Geode,
+    StartOre,
+    StartClay,
+    StartObsidian,
+    StartGeode,
 }
 
-const PART1_ACTIONS: [Action; 4] = [Action::Start_Ore, Action::Start_Clay, Action::Start_Obsidian, Action::Start_Geode];
+const PART1_ACTIONS: [Action; 4] = [Action::StartOre, Action::StartClay, Action::StartObsidian, Action::StartGeode];
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 struct ActionList {
@@ -34,68 +34,28 @@ impl ActionList {
         // If the existing list ends with an action of the same type at the same time,
         // just add one to that.
         let len = newlist.action.len();
-        println!("Extending {:?} with {:?} at time {:?}", newlist, action, t);
+        // println!("Extending {:?} with {:?} at time {:?}", newlist, action, t);
 
         if (len >= 1) &&
            (newlist.action[len-1].0 == t) &&
            (newlist.action[len-1].1 == action) {
             // Just increment the last element
             newlist.action[len-1].2 += 1;
-            println!("  Incremented last element.");
+            // println!("  Incremented last element.");
         }
         else {
             // Append a new element to the list
             newlist.action.push( (t, action, 1));
-            println!("  Pushed new element.");
+            // println!("  Pushed new element.");
         }
 
         newlist
     }
 }
 
-/*
-struct SimState {
-    ore_bots: usize,
-    clay_bots: usize,
-    obsidian_bots: usize,
-    geode_bots: usize,
-
-    ore: usize,
-    clay: usize,
-    obsidian: usize,
-    geodes: usize,
-
-    ore_bots_ordered: usize,
-    clay_bots_ordered: usize,
-    obsidian_bots_ordered: usize,
-    geode_bots_ordered: usize,
-}
-
-impl SimState {
-    pub fn new() -> SimState {
-        SimState { 
-            ore_bots: 1,
-            clay_bots: 0,
-            obsidian_bots: 0,
-            geode_bots: 0,
-            ore: 0,
-            clay: 0,
-            obsidian: 0,
-            geodes: 0,
-
-            ore_bots_ordered: 0,
-            clay_bots_ordered: 0,
-            obsidian_bots_ordered: 0,
-            geode_bots_ordered: 0,
-        }
-    }
-}
-*/
-
 struct Sim<'a> {
     blueprint: &'a Blueprint,
 
-    geodes: usize,
     next_ore_bot: Option<usize>,
     next_clay_bot: Option<usize>,
     next_obsidian_bot: Option<usize>,
@@ -106,7 +66,6 @@ impl<'a> Sim<'a> {
     pub fn new(blueprint: &'a Blueprint) -> Sim {
         Sim {
             blueprint: blueprint,
-            geodes: 0,
             next_ore_bot: None,
             next_clay_bot: None,
             next_obsidian_bot: None,
@@ -121,69 +80,82 @@ impl<'a> Sim<'a> {
             clay_bots_ordered: usize, 
             clay: usize, 
             obsidian_bots_ordered: usize, 
-            obsidian: usize) {
+            obsidian: usize,
+            geode_bots_ordered: usize) {
+
+        // If there are non-zero orders in this time step already, we won't consider 
+        // any possible orders from earlier time steps.
+        // (In fact, if any were possible, that would indicate suboptimal operations?)
+        if ore_bots_ordered > 0 || clay_bots_ordered > 0 || obsidian_bots_ordered > 0 || geode_bots_ordered > 0 {
+            self.next_ore_bot = None;
+            self.next_clay_bot = None;
+            self.next_obsidian_bot = None;
+            self.next_geode_bot = None;
+        }
 
         // Check whether the various options are possible at this point.
-        if (ore >= self.blueprint.ore_cost_ore) {
-            // We could add an ore bot at this time
-            if self.next_ore_bot == None {
-                // We couldn't afford one before, so this is the earliest we could add it
-                self.next_ore_bot = Some(t)
-            }
-        }
-        else {
-            // We can't add an ore bot at this time
+        if clay_bots_ordered > 0 || obsidian_bots_ordered > 0 || geode_bots_ordered > 0 {
+            // Respect the hierarchy.
+            // once we've started ordering higher order bots in a time step, 
+            // don't add more lower ones.
             self.next_ore_bot = None;
-        };
-
-        if (ore >= self.blueprint.clay_cost_ore) &&
-           (ore_bots_ordered == 0) {
-            // We could afford a clay bot now
-            if self.next_clay_bot == None {
-                // We couldn't afford one before
-                self.next_clay_bot = Some(t);
-            }
         }
-        else {
-            // We can't afford a clay bot at this point
-            self.next_clay_bot = None
-        };
-
-        if (ore >= self.blueprint.obsidian_cost_ore) && 
-           (clay >= self.blueprint.obsidian_cost_clay) &&
-           (ore_bots_ordered == 0) &&
-           (clay_bots_ordered == 0) {
-            // We could afford an obsidian bot now
-            if self.next_obsidian_bot == None {
-                // We couldn't afford one before
-                self.next_obsidian_bot = Some(t);
-            }
+        else if ore < self.blueprint.ore_cost_ore {
+            // We don't have enough ore for another ore bot at this time
+            self.next_ore_bot = None;
         }
-        else {
-            // We can't afford an obsidian bot at this point
+        else if self.next_ore_bot == None {
+            // Ore bots just went from unaffordable to affordable
+            self.next_ore_bot = Some(t);
+        }
+
+        if obsidian_bots_ordered > 0 || geode_bots_ordered > 0 {
+            // Respect the hierarchy.
+            // once we've started ordering higher order bots in a time step, 
+            // don't add more lower ones.
+            self.next_clay_bot = None;
+        }
+        else if ore < self.blueprint.clay_cost_ore {
+            // We don't have enough ore for another clay bot at this time
+            self.next_clay_bot = None;
+        }
+        else if self.next_clay_bot == None {
+            // Clay bots just went from unaffordable to affordable
+            self.next_clay_bot = Some(t);
+        }
+
+        if geode_bots_ordered > 0 {
+            // Respect the hierarchy.
+            // once we've started ordering higher order bots in a time step, 
+            // don't add more lower ones.
             self.next_obsidian_bot = None;
-        };
-
-        if (ore >= self.blueprint.geode_cost_ore) && 
-           (obsidian >= self.blueprint.geode_cost_obsidian) &&
-           (ore_bots_ordered == 0) &&
-           (clay_bots_ordered == 0) &&
-           (obsidian_bots_ordered == 0) {
-            // We could afford a geode bot now
-            if self.next_geode_bot == None {
-                // We couldn't afford one before
-                Some(t);
-            }
         }
-        else {
-            // We can't afford a geode bot at this point
+        else if (ore < self.blueprint.obsidian_cost_ore) ||
+                (clay < self.blueprint.obsidian_cost_clay) {
+            // We don't have enough material for another obsidian bot at this time
+            self.next_obsidian_bot = None;
+        }
+        else if self.next_obsidian_bot == None {
+            // Obsidian bots just went from unaffordable to affordable
+            self.next_obsidian_bot = Some(t);
+        }
+
+        if (ore < self.blueprint.geode_cost_ore) ||
+                (obsidian < self.blueprint.geode_cost_obsidian) {
+            // We don't have enough material for another geode bot at this time
             self.next_geode_bot = None;
-        };
+        }
+        else if self.next_geode_bot == None {
+            // Geode bots just went from unaffordable to affordable
+            self.next_geode_bot = Some(t);
+        }        
     }
+
+    
 
     // run the actionlist and return the number of geodes produced.
     // returns (geodes, score)
-    pub fn run(&mut self, action_list: &ActionList) -> (usize, usize) {
+    pub fn run(&mut self, action_list: &ActionList) -> (usize, usize, usize, usize) {
 
         let mut ore = 0;
         let mut clay = 0;
@@ -210,29 +182,29 @@ impl<'a> Sim<'a> {
                 if t == *action_time {
                     // Do an action.  Consume resources, order machines for next time step.
                     match action {
-                        Action::Start_Ore => {
+                        Action::StartOre => {
                             ore -= self.blueprint.ore_cost_ore * quantity;
                             ore_bots_ordered += quantity;
                         }
-                        Action::Start_Clay => { 
+                        Action::StartClay => { 
                             ore -= self.blueprint.clay_cost_ore * quantity;
                             clay_bots_ordered += quantity;
-                            self.next_ore_bot = None
+                            // self.next_ore_bot = None
                         }
-                        Action::Start_Obsidian => { 
+                        Action::StartObsidian => { 
                             ore -= self.blueprint.obsidian_cost_ore * quantity;
                             clay -= self.blueprint.obsidian_cost_clay * quantity;
-                            obsidian_bots_ordered += 1;
-                            self.next_ore_bot = None;
-                            self.next_clay_bot = None;
+                            obsidian_bots_ordered += quantity;
+                            // self.next_ore_bot = None;
+                            // self.next_clay_bot = None;
                         }
-                        Action::Start_Geode => { 
+                        Action::StartGeode => { 
                             ore -= self.blueprint.geode_cost_ore * quantity;
                             obsidian -= self.blueprint.geode_cost_obsidian * quantity;
-                            geode_bots_ordered += 1;
-                            self.next_ore_bot = None;
-                            self.next_clay_bot = None;
-                            self.next_obsidian_bot = None;
+                            geode_bots_ordered += quantity;
+                            // self.next_ore_bot = None;
+                            // self.next_clay_bot = None;
+                            // self.next_obsidian_bot = None;
                         }
                     }
 
@@ -243,7 +215,11 @@ impl<'a> Sim<'a> {
 
             if !acted {
                 // No more actions for this time tick.
-                self.update_affordability(t, ore_bots_ordered, ore, clay_bots_ordered, clay, obsidian_bots_ordered, obsidian);
+                self.update_affordability(t, 
+                    ore_bots_ordered, ore, 
+                    clay_bots_ordered, clay, 
+                    obsidian_bots_ordered, obsidian, 
+                    geode_bots_ordered);
 
                 // Let machines generate new resources.
                 ore += ore_bots;
@@ -266,17 +242,17 @@ impl<'a> Sim<'a> {
             }
         }
 
-        (geodes, geodes*1000 + obsidian*100 + clay*10 + ore)
+        (geodes, obsidian, clay, ore)
     }
 
     // Return the earliest time when the given action could be performed without
     // interfering with the other actions already done.  (or None if not possible.)
     pub fn next_action_time(&self, action: &Action) -> Option<usize> {
         match action {
-            Action::Start_Clay => self.next_clay_bot,
-            Action::Start_Ore => self.next_ore_bot,
-            Action::Start_Obsidian => self.next_obsidian_bot,
-            Action::Start_Geode => self.next_geode_bot,
+            Action::StartClay => self.next_clay_bot,
+            Action::StartOre => self.next_ore_bot,
+            Action::StartObsidian => self.next_obsidian_bot,
+            Action::StartGeode => self.next_geode_bot,
         }
     }
 
@@ -312,8 +288,18 @@ impl Blueprint {
         }
     }
 
-    fn quality_level(&self, time_limit: usize) -> usize {
+    fn score(&self, result: (usize, usize, usize, usize)) -> usize {
+        let clay_value = 1 + self.clay_cost_ore;
+        let obsidian_value = 1 + (self.obsidian_cost_clay * clay_value + self.obsidian_cost_ore);
+        let geode_value = 1 + (self.geode_cost_obsidian * obsidian_value + self.geode_cost_ore);
+
+        result.3 + result.2*clay_value + result.1*obsidian_value + result.0*geode_value
+    }
+
+    fn quality_level(&self) -> usize {
         let mut max_geodes = 0;
+        let mut max_score = 0;
+        let mut best_result: [(usize, usize, usize, usize); 25] = [(0,0,0,0);25];
 
         println!("Assessing QL for {:?}", self);
 
@@ -322,29 +308,55 @@ impl Blueprint {
         in_progress.push(Rc::new(empty_solution), 0);
         
 
+        let mut _evals = 0;
         while in_progress.len() > 0 {
             // get candidate solution
-            let candidate = in_progress.pop().unwrap().0;
-
-            println!("Evaluating candidate: {:?}", candidate);
+            let (candidate, score) = in_progress.pop().unwrap();
+            if score > max_score {
+                max_score = score;
+            }
+            println!("max: {}, score: {}, max_score: {} in_progress: {} sequences.", max_geodes, score, max_score, in_progress.len());
+            println!("{:?}", candidate);
+            
+            _evals += 1;
+            // assert!(evals < 200);
+            
+            // println!("Evaluating candidate: {:#?}", candidate);
 
             // Run the candidate solution through simulation
             let mut sim = Sim::new(self);
-            let (geodes, score) = sim.run(&candidate);
-            println!("    Sim completed.  {:?} Geodes.", geodes);
-            if geodes > max_geodes {
-                max_geodes = geodes;
-                println!("New best: {:?} Geodes via {:?}", geodes, candidate);
+            let result = sim.run(&candidate);
+            //let _score = self.score(result);
+            //println!("    Sim completed.  {:?} Geodes, score: {}", 
+            //         geodes, score);
+            if result.0 > max_geodes {
+                max_geodes = result.0;
+                //println!("New best: {:?} Geodes via {:?}", geodes, candidate);
             }
 
             for new_action in PART1_ACTIONS {
                 if let Some(t) = sim.next_action_time(&new_action) {
-                    // extend the candidate with Action::Start_Clay(1) at time t
-                    // println!("Extending with {:?} at {:?}", new_action, t);
-                    in_progress.push(Rc::new(candidate.extend(t, new_action)), score);
-                }
-                else {
-                    // println!("Can't extend with {:?}", new_action);
+                    // extend the candidate with one of the next possible actions.
+                    // println!("  Extending with {:?} at {:?}", new_action, t);
+                    let new_seq = candidate.extend(t, new_action);
+                    // println!("  {:?}", new_seq);
+                    let mut new_sim = Sim::new(self);
+                    let result = new_sim.run(&new_seq);
+                    let score = self.score(result);
+                    // println!("Got score {} from ore:{}, clay:{}, obsidian:{}, geodes:{}",
+                    //         score, result.3, result.2, result.1, result.0);
+
+                    if result >= best_result[t] {
+                        // This result is the best to time t, keep exploring this chain.
+                        in_progress.push(Rc::new(new_seq), score);
+
+                        // update best scores
+                        for tt in t..25 {
+                            if result > best_result[tt] {
+                                best_result[tt] = result;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -381,7 +393,7 @@ impl Day for Day19 {
     fn part1(&self) -> Answer {
         let mut sum_quality = 0;
         for blueprint in &self.blueprints {
-            sum_quality += blueprint.quality_level(TIME_PART1);
+            sum_quality += blueprint.quality_level();
         }
 
         Answer::Number(sum_quality)
@@ -412,7 +424,7 @@ mod tests {
     #[test]
     fn test_max_geodes() {
         let d = Day19::load("examples/day19_example1.txt");
-        // assert_eq!(d.blueprints[0].quality_level(TIME_PART1), 9);
-        assert_eq!(d.blueprints[1].quality_level(TIME_PART1), 24);
+        // assert_eq!(d.blueprints[0].quality_level(), 9);
+        assert_eq!(d.blueprints[1].quality_level(), 24);
     }
 }
