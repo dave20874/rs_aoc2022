@@ -1,4 +1,5 @@
 use crate::day::{Day, Answer};
+use std::cmp::Reverse;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::rc::Rc;
@@ -297,8 +298,6 @@ impl Blueprint {
     }
 
     fn quality_level(&self) -> usize {
-        let mut max_geodes = 0;
-        let mut max_score = 0;
         let mut best_result: [(usize, usize, usize, usize); 25] = [(0,0,0,0);25];
 
         println!("Assessing QL for {:?}", self);
@@ -310,56 +309,47 @@ impl Blueprint {
 
         let mut _evals = 0;
         while in_progress.len() > 0 {
-            // get candidate solution
-            let (candidate, score) = in_progress.pop().unwrap();
-            if score > max_score {
-                max_score = score;
-            }
-            println!("max: {}, score: {}, max_score: {} in_progress: {} sequences.", max_geodes, score, max_score, in_progress.len());
-            println!("{:?}", candidate);
-            
-            _evals += 1;
-            // assert!(evals < 200);
-            
-            // println!("Evaluating candidate: {:#?}", candidate);
+            // Pop next candidate
+            let (candidate, t) = in_progress.pop().unwrap();
 
             // Run the candidate solution through simulation
             let mut sim = Sim::new(self);
             let result = sim.run(&candidate);
-            //let _score = self.score(result);
-            //println!("    Sim completed.  {:?} Geodes, score: {}", 
-            //         geodes, score);
-            if result.0 > max_geodes {
-                max_geodes = result.0;
-                //println!("New best: {:?} Geodes via {:?}", geodes, candidate);
+
+            let mut improved = false;
+
+            // store this as high water mark where applicable
+            for t_prime in t..=24 {
+                if result >= best_result[t_prime] {
+                    best_result[t_prime] = result;
+                    improved = true;
+                }
             }
 
-            for new_action in PART1_ACTIONS {
-                if let Some(t) = sim.next_action_time(&new_action) {
-                    // extend the candidate with one of the next possible actions.
-                    // println!("  Extending with {:?} at {:?}", new_action, t);
-                    let new_seq = candidate.extend(t, new_action);
-                    // println!("  {:?}", new_seq);
-                    let mut new_sim = Sim::new(self);
-                    let result = new_sim.run(&new_seq);
-                    let score = self.score(result);
-                    // println!("Got score {} from ore:{}, clay:{}, obsidian:{}, geodes:{}",
-                    //         score, result.3, result.2, result.1, result.0);
+            let t_earlier = if t > 0 { t-1 } else {0};
+            let good_enough = (result >= best_result[t_earlier]);
 
-                    if result >= best_result[t] {
-                        // This result is the best to time t, keep exploring this chain.
-                        in_progress.push(Rc::new(new_seq), score);
+            // The idea of only extending a solution if it improved on prior results
+            // (based on ranking results) isn't working for example 2.
 
-                        // update best scores
-                        for tt in t..25 {
-                            if result > best_result[tt] {
-                                best_result[tt] = result;
-                            }
-                        }
+            if good_enough {
+                // Look at ways to extend this result
+                for new_action in PART1_ACTIONS {
+                    if let Some(t) = sim.next_action_time(&new_action) {
+                        // extend the candidate with one of the next possible actions.
+                        // println!("  Extending with {:?} at {:?}", new_action, t);
+                        let new_seq = candidate.extend(t, new_action);
+
+                        in_progress.push(Rc::new(new_seq), t);
                     }
                 }
             }
         }
+
+        // best result for time 24 has the geode count.
+        let max_geodes = best_result[24].0;
+
+        println!("Most geodes: {}", max_geodes);
 
         max_geodes * self.id
     }
