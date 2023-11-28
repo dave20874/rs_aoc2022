@@ -1,5 +1,5 @@
 use crate::day::{Day, Answer};
-use std::cmp::Reverse;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::rc::Rc;
@@ -7,6 +7,19 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use priority_queue::PriorityQueue;
 
+const MAX_P2_BOTS: usize = 3;
+
+#[derive(Debug)]
+enum Material {
+    Ore,
+    Clay,
+    Obsidian,
+    Geode,
+}
+
+const MATERIALS: [Material; 4] = [Material::Ore, Material::Clay, Material::Obsidian, Material::Geode];
+
+/*
 #[derive(Hash, std::cmp::PartialEq, std::cmp::Eq, Clone, Debug)]
 enum Action {
     StartOre,
@@ -53,27 +66,239 @@ impl ActionList {
         newlist
     }
 }
+*/
+
+
+#[derive(Hash, std::cmp::PartialEq, std::cmp::Eq, Debug, Clone, Copy)]
+struct ProductionPlan {
+    // How many bots to make of each type
+    // The Sim class will figure out the best time to make each one.
+
+    // p1_bots need to be satisfied before any higher bots are made.
+    p1_bots: (usize, usize, usize, usize),
+
+    // p2_bots can be satisfied after production of higher bots starts.
+    p2_bots: (usize, usize, usize, usize),
+}
+
+impl ProductionPlan {
+    fn new() -> ProductionPlan {
+        ProductionPlan { p1_bots: (0, 0, 0, 0), p2_bots: (0, 0, 0, 0) }
+    }
+
+    fn to_result(&self) -> Result {
+        Result { resource: (
+            self.p1_bots.0 + self.p2_bots.0, 
+            self.p1_bots.1 + self.p2_bots.1,
+            self.p1_bots.2 + self.p2_bots.2,
+            self.p1_bots.3 + self.p2_bots.3)}
+    }
+
+    // Create a new plan based on this one but with an additional bot ordered.
+    fn add(&self, bot_type: &Material, p1: bool) -> ProductionPlan {
+        let mut p1_bots = self.p1_bots;
+        let mut p2_bots = self.p2_bots;
+
+        if p1 {
+            match bot_type {
+                Material::Ore => p1_bots.3 += 1,
+                Material::Clay => p1_bots.2 += 1,
+                Material::Obsidian => p1_bots.1 += 1,
+                Material::Geode => p1_bots.0 += 1,
+            }
+        }
+        else {
+            match bot_type {
+                Material::Ore => p2_bots.3 += 1,
+                Material::Clay => p2_bots.2 += 1,
+                Material::Obsidian => p2_bots.1 += 1,
+                Material::Geode => p2_bots.0 += 1,
+            }
+        }
+
+        // Limit P2 bots to a max of 1.
+        if p2_bots.0 > MAX_P2_BOTS {
+            p1_bots.0 += p2_bots.0-MAX_P2_BOTS;
+            p2_bots.0 = MAX_P2_BOTS;
+        }
+        if p2_bots.1 > MAX_P2_BOTS {
+            p1_bots.1 += p2_bots.1-MAX_P2_BOTS;
+            p2_bots.1 = MAX_P2_BOTS;
+        }
+        if p2_bots.2 > MAX_P2_BOTS {
+            p1_bots.2 += p2_bots.2-MAX_P2_BOTS;
+            p2_bots.2 = MAX_P2_BOTS;
+        }
+        if p2_bots.3 > MAX_P2_BOTS {
+            p1_bots.3 += p2_bots.3-MAX_P2_BOTS;
+            p2_bots.3 = MAX_P2_BOTS;
+        }
+
+        ProductionPlan { p1_bots, p2_bots }
+    }
+
+    // Subtract a bot from those that need to be ordered
+    fn remove(&mut self, bot_type:&Material) {
+        match bot_type {
+            Material::Ore => {
+                if self.p1_bots.3 > 0 {
+                    self.p1_bots.3 -= 1;
+                }
+                else if self.p2_bots.3 > 0 {
+                    self.p2_bots.3 -= 1;
+                }
+                else {
+                    // Can't remove when nothing is there!
+                    panic!();
+                }
+            }
+            Material::Clay => {
+                if self.p1_bots.2 > 0 {
+                    self.p1_bots.2 -= 1;
+                }
+                else if self.p2_bots.2 > 0 {
+                    self.p2_bots.2 -= 1;
+                }
+                else {
+                    // Can't remove when nothing is there!
+                    panic!();
+                }
+            }
+            Material::Obsidian => {
+                if self.p1_bots.1 > 0 {
+                    self.p1_bots.1 -= 1;
+                }
+                else if self.p2_bots.1 > 0 {
+                    self.p2_bots.1 -= 1;
+                }
+                else {
+                    // Can't remove when nothing is there!
+                    panic!();
+                }
+            }
+            Material::Geode => {
+                if self.p1_bots.0 > 0 {
+                    self.p1_bots.0 -= 1;
+                }
+                else if self.p2_bots.0 > 0 {
+                    self.p2_bots.0 -= 1;
+                }
+                else {
+                    // Can't remove when nothing is there!
+                    panic!();
+                }
+            }
+        }
+    }
+
+    fn p1_ore(&self) -> usize {
+        self.p1_bots.3
+    }
+
+    fn ore(&self) -> usize {
+        self.p1_bots.3 + self.p2_bots.3
+    }
+
+    fn p1_clay(&self) -> usize {
+        self.p1_bots.2
+    }
+
+    fn clay(&self) -> usize {
+        self.p1_bots.2 + self.p2_bots.2
+    }
+
+    fn p1_obsidian(&self) -> usize {
+        self.p1_bots.1
+    }
+
+    fn obsidian(&self) -> usize {
+        self.p1_bots.1 + self.p2_bots.1
+    }
+
+    /* fn p1_geode(&self) -> usize {
+        self.p1_bots.0
+    }
+    */
+
+    fn geode(&self) -> usize {
+        self.p1_bots.0 + self.p2_bots.0
+    }
+}
+
+
+#[derive(Hash, PartialEq, Eq, Ord, PartialOrd, Clone, Copy, Debug)]
+struct Result {
+    // geodes, obsidian, clay, ore
+    resource: (usize, usize, usize, usize),
+}
+
+impl Result {
+    fn new() -> Result {
+        Result { resource: (0, 0, 0, 0) }
+    }
+
+    fn add(&mut self, for_material: &Material) {
+
+        match for_material {
+            Material::Ore => self.resource.3 += 1,
+            Material::Clay => self.resource.2 += 1,
+            Material::Obsidian => self.resource.1 += 1,
+            Material::Geode => self.resource.0 += 1,
+        }
+    }
+
+    fn clear(&mut self) {
+        self.resource.0 = 0;
+        self.resource.1 = 0;
+        self.resource.2 = 0;
+        self.resource.3 = 0;
+    }
+
+    fn ore(&self) -> usize {
+        self.resource.3
+    }
+
+    fn clay(&self) -> usize {
+        self.resource.2
+    }
+
+    fn obsidian(&self) -> usize {
+        self.resource.1
+    }
+
+    fn geode(&self) -> usize {
+        self.resource.0
+    }
+
+    fn produce(&mut self, other: &Result) {
+        self.resource.0 += other.resource.0;
+        self.resource.1 += other.resource.1;
+        self.resource.2 += other.resource.2;
+        self.resource.3 += other.resource.3;
+    }
+
+    fn use_resource(&mut self, resource: &Material, amount: usize) {
+        match resource {
+            Material::Ore => { self.resource.3 -= amount; }
+            Material::Clay => { self.resource.2 -= amount; }
+            Material::Obsidian => { self.resource.1 -= amount; }
+            Material::Geode => { self.resource.0 -= amount; }
+        }
+    }
+}
 
 struct Sim<'a> {
     blueprint: &'a Blueprint,
-
-    next_ore_bot: Option<usize>,
-    next_clay_bot: Option<usize>,
-    next_obsidian_bot: Option<usize>,
-    next_geode_bot: Option<usize>,
 }
 
 impl<'a> Sim<'a> {
     pub fn new(blueprint: &'a Blueprint) -> Sim {
         Sim {
             blueprint: blueprint,
-            next_ore_bot: None,
-            next_clay_bot: None,
-            next_obsidian_bot: None,
-            next_geode_bot: None,
         }
     }
 
+    /*
     fn update_affordability(&mut self, 
             t: usize, 
             ore_bots_ordered: usize,
@@ -151,101 +376,110 @@ impl<'a> Sim<'a> {
             self.next_geode_bot = Some(t);
         }        
     }
-
-    
+*/
 
     // run the actionlist and return the number of geodes produced.
     // returns (geodes, score)
-    pub fn run(&mut self, action_list: &ActionList) -> (usize, usize, usize, usize) {
+    pub fn run(&mut self, plan: &ProductionPlan, verbose: bool) -> Result {
+        let mut to_order = *plan;
 
-        let mut ore = 0;
-        let mut clay = 0;
-        let mut obsidian = 0;
-        let mut geodes = 0;
+        let mut material: Result = Result::new();
+        let mut bots: Result = Result::new();
+        bots.add(&Material::Ore);
+        let mut bots_ordered = Result::new();
 
-        let mut ore_bots = 1;
-        let mut clay_bots = 0;
-        let mut obsidian_bots = 0;
-        let mut geode_bots = 0;
-
-        let mut ore_bots_ordered = 0;
-        let mut clay_bots_ordered = 0;
-        let mut obsidian_bots_ordered = 0;
-        let mut geode_bots_ordered = 0;
-
-        let mut t = 0;
-        let mut action_index = 0;
-
-        while t < TIME_PART1 {
-            let mut acted = false;
-            if action_index < action_list.action.len() {
-                let (action_time, action, quantity) = &action_list.action[action_index];
-                if t == *action_time {
-                    // Do an action.  Consume resources, order machines for next time step.
-                    match action {
-                        Action::StartOre => {
-                            ore -= self.blueprint.ore_cost_ore * quantity;
-                            ore_bots_ordered += quantity;
-                        }
-                        Action::StartClay => { 
-                            ore -= self.blueprint.clay_cost_ore * quantity;
-                            clay_bots_ordered += quantity;
-                            // self.next_ore_bot = None
-                        }
-                        Action::StartObsidian => { 
-                            ore -= self.blueprint.obsidian_cost_ore * quantity;
-                            clay -= self.blueprint.obsidian_cost_clay * quantity;
-                            obsidian_bots_ordered += quantity;
-                            // self.next_ore_bot = None;
-                            // self.next_clay_bot = None;
-                        }
-                        Action::StartGeode => { 
-                            ore -= self.blueprint.geode_cost_ore * quantity;
-                            obsidian -= self.blueprint.geode_cost_obsidian * quantity;
-                            geode_bots_ordered += quantity;
-                            // self.next_ore_bot = None;
-                            // self.next_clay_bot = None;
-                            // self.next_obsidian_bot = None;
-                        }
-                    }
-
-                    acted = true;
-                    action_index += 1;
-                }
+        for _t in 0..TIME_LIMIT {
+            // Bot ordering phase            
+            bots_ordered.clear();
+            if verbose {
+                println!("time: {}", _t+1);
             }
 
-            if !acted {
-                // No more actions for this time tick.
-                self.update_affordability(t, 
-                    ore_bots_ordered, ore, 
-                    clay_bots_ordered, clay, 
-                    obsidian_bots_ordered, obsidian, 
-                    geode_bots_ordered);
+            let mut changed = true;
+            while changed {
+                changed = false;
 
-                // Let machines generate new resources.
-                ore += ore_bots;
-                clay += clay_bots;
-                obsidian += obsidian_bots;
-                geodes += geode_bots;
+                // Should we order a geode bot?
+                // Yes, if we have the resources, it's in the plan and there aren't any higher 
+                // priority plan components blocking it.
+                if self.blueprint.can_afford(&Material::Geode, &material) && 
+                    (to_order.geode() > 0)  &&
+                    (to_order.p1_obsidian() == 0) &&
+                    (to_order.clay() == 0) &&
+                    (to_order.ore() == 0)  {
+                        // Add a geode bot to the order
+                        bots_ordered.add(&Material::Geode);
+                        to_order.remove(&Material::Geode);
+                        material.use_resource(&Material::Obsidian, self.blueprint.geode_cost_obsidian);
+                        material.use_resource(&Material::Ore, self.blueprint.geode_cost_ore);
+                        
+                        changed = true;
+                }
+                
+                // Should we order an obsidian bot?
+                else if self.blueprint.can_afford(&Material::Obsidian, &material) && 
+                    (to_order.obsidian() > 0) &&        
+                    (to_order.p1_clay() == 0) &&
+                    (to_order.ore() == 0) {
+                        // Add an obsidian bot to the order
+                        bots_ordered.add(&Material::Obsidian);
+                        to_order.remove(&Material::Obsidian);
+                        
+                        material.use_resource(&Material::Clay, self.blueprint.obsidian_cost_clay);
+                        material.use_resource(&Material::Ore, self.blueprint.obsidian_cost_ore);
+                        
 
-                // Newly ordered machines can come online now.
-                ore_bots += ore_bots_ordered;
-                clay_bots += clay_bots_ordered;
-                obsidian_bots += obsidian_bots_ordered;
-                geode_bots += geode_bots_ordered;
+                        changed = true;
+                }
 
-                ore_bots_ordered = 0;
-                clay_bots_ordered = 0;
-                obsidian_bots_ordered = 0;
-                geode_bots_ordered = 0;
+                // Should we order a clay bot?
+                else if self.blueprint.can_afford(&Material::Clay, &material) && 
+                    (to_order.clay() > 0) &&        
+                    (to_order.p1_ore() == 0) {
+                        // Add a clay bot to the order
+                        bots_ordered.add(&Material::Clay);
+                        to_order.remove(&Material::Clay);
+                        material.use_resource(&Material::Ore, self.blueprint.clay_cost_ore);
+                        
 
-                t += 1;
+                        changed = true;
+                }
+
+                // Should we order an ore bot?
+                else if self.blueprint.can_afford(&Material::Ore, &material) && 
+                    (to_order.ore() > 0)  {
+                        // Add an ore bot to the order
+                        bots_ordered.add(&Material::Ore);
+                        to_order.remove(&Material::Ore);
+                        
+                        material.use_resource(&Material::Ore, self.blueprint.ore_cost_ore);
+                        
+
+                        changed = true;
+                }
+            }
+            if verbose {
+                println!("    Bots ordered {:?}", to_order);
+            }
+
+            // Production phase
+            material.produce(&bots);
+            if verbose {
+                println!("    Materials {:?}", material);
+            }
+
+            // Bot delivery phase
+            bots.produce(&bots_ordered);
+            if verbose {
+                println!("    Bots now: {:?}", bots);
+                println!();
             }
         }
 
-        (geodes, obsidian, clay, ore)
+        material
     }
 
+/*
     // Return the earliest time when the given action could be performed without
     // interfering with the other actions already done.  (or None if not possible.)
     pub fn next_action_time(&self, action: &Action) -> Option<usize> {
@@ -256,6 +490,7 @@ impl<'a> Sim<'a> {
             Action::StartGeode => self.next_geode_bot,
         }
     }
+    */
 
 }
 
@@ -285,10 +520,11 @@ impl Blueprint {
             obsidian_cost_ore: caps[4].parse::<usize>().unwrap(),
             obsidian_cost_clay: caps[5].parse::<usize>().unwrap(),
             geode_cost_ore: caps[6].parse::<usize>().unwrap(),
-            geode_cost_obsidian: caps[7].parse::<usize>().unwrap()
+            geode_cost_obsidian: caps[7].parse::<usize>().unwrap(),
         }
     }
 
+    /*
     fn score(&self, result: (usize, usize, usize, usize)) -> usize {
         let clay_value = 1 + self.clay_cost_ore;
         let obsidian_value = 1 + (self.obsidian_cost_clay * clay_value + self.obsidian_cost_ore);
@@ -296,58 +532,133 @@ impl Blueprint {
 
         result.3 + result.2*clay_value + result.1*obsidian_value + result.0*geode_value
     }
+    */
+
+    fn can_afford(&self, material: &Material, result: &Result) -> bool {
+        match material {
+            Material::Ore => {
+                result.ore() >= self.ore_cost_ore
+            }
+            Material::Clay => {
+                result.ore() >= self.clay_cost_ore
+            }
+            Material::Obsidian => {
+                result.ore() >= self.obsidian_cost_ore &&
+                result.clay() >= self.obsidian_cost_clay
+            }
+            Material::Geode => {
+                result.ore() >= self.geode_cost_ore &&
+                result.obsidian() >= self.geode_cost_obsidian
+            }
+        }
+    }
 
     fn quality_level(&self) -> usize {
-        let mut best_result: [(usize, usize, usize, usize); 25] = [(0,0,0,0);25];
+        let mut sim = Sim::new(self);
 
         println!("Assessing QL for {:?}", self);
 
-        let mut in_progress: PriorityQueue<Rc<ActionList>, usize> = PriorityQueue::new();
-        let empty_solution = ActionList::new();
-        in_progress.push(Rc::new(empty_solution), 0);
-        
+        let mut plans: HashSet<ProductionPlan> = HashSet::new();
+        let mut in_progress: PriorityQueue<Rc<(ProductionPlan, Result)>, Result> = PriorityQueue::new();
+        let empty_plan = ProductionPlan::new();
+        let base_result = sim.run(&empty_plan, false);
+        let mut best_result = base_result;
+        plans.insert(empty_plan);
+        in_progress.push(Rc::new((empty_plan, base_result)), empty_plan.to_result());
+
+        let mut verbose;
 
         let mut _evals = 0;
         while in_progress.len() > 0 {
-            // Pop next candidate
-            let (candidate, t) = in_progress.pop().unwrap();
+            verbose = false;
+            _evals += 1;
+            // println!("Evals: {}, Max: {}", _evals, best_result.resource.0);
 
-            // Run the candidate solution through simulation
-            let mut sim = Sim::new(self);
-            let result = sim.run(&candidate);
+            // Pop next candidate and its results
+            let (popped, _priority) = in_progress.pop().unwrap();
+            let plan = popped.0;
+            let base_result = popped.1;
+
+
+
+            // println!("popped plan: {:?}, result: {:?}", plan, base_result);
 
             let mut improved = false;
 
-            // store this as high water mark where applicable
-            for t_prime in t..=24 {
-                if result >= best_result[t_prime] {
-                    best_result[t_prime] = result;
-                    improved = true;
-                }
-            }
+            // Look at ways to extend this plan
+            for material in MATERIALS {
+                verbose = false;
 
-            let t_earlier = if t > 0 { t-1 } else {0};
-            let good_enough = (result >= best_result[t_earlier]);
-
-            // The idea of only extending a solution if it improved on prior results
-            // (based on ranking results) isn't working for example 2.
-
-            if good_enough {
-                // Look at ways to extend this result
-                for new_action in PART1_ACTIONS {
-                    if let Some(t) = sim.next_action_time(&new_action) {
-                        // extend the candidate with one of the next possible actions.
-                        // println!("  Extending with {:?} at {:?}", new_action, t);
-                        let new_seq = candidate.extend(t, new_action);
-
-                        in_progress.push(Rc::new(new_seq), t);
+                // If we have resources to make another bot for <material>,
+                // explore that option.
+                // (Unless it's already registered to be explored or it doesn't improve on the base plan.)
+                if self.can_afford(&material, &base_result) {
+                    for p1 in &[true] {
+                        let new_plan = plan.add(&material, *p1);
+                        if !plans.contains(&new_plan) {
+                            // This is an unexplored plan
+                      
+                            let bot_totals = new_plan.to_result();
+                            if (bot_totals.resource.3 == 0) &&
+                                (bot_totals.resource.2 == 4) &&
+                                (bot_totals.resource.1 == 2) &&
+                                (bot_totals.resource.0 == 2) {
+                                    // This should be the winner
+                                    verbose = true;
+                            }
+                            else {
+                                verbose = false;
+                            }
+                            if verbose {
+                                println!("THIS SHOULD BE A WINNER");
+                                println!("plan: {:?}", new_plan);
+                            }
+                            
+                            let new_result = sim.run(&new_plan, verbose);
+                            if verbose {
+                                println!("Simulate unexplored plan: {:?}", new_plan);
+                                println!("    result: {:?}", new_result);
+                            }
+                            if new_result > base_result {
+                                // The new action improves on the plan
+                                // Add it to the list of options to explore.
+                                // let priority: usize = 0;  // TODO-DW establish priority mechanism.
+                                in_progress.push(Rc::new((new_plan, new_result)), new_plan.to_result());
+                                plans.insert(new_plan);
+                                improved = true;
+                                if verbose {
+                                    println!("Improved by adding {:?}", &material);
+                                }
+                            }
+                            else {
+                                if verbose {
+                                    println!("No improvement from this plan.");
+                                }
+                            }
+                        }
+                        else {
+                            if verbose {
+                                println!("Pruned exploration on duplicate plan.");
+                            }
+                        }
                     }
                 }
             }
+
+            if !improved {
+                // This plan, base_result couldn't be improved.  Is it a global best?
+                if verbose {
+                    println!("Local max: {:?}, {:?}", plan, base_result);
+                }   
+                if base_result > best_result {
+                    best_result = base_result;
+                }
+            }
+            
         }
 
         // best result for time 24 has the geode count.
-        let max_geodes = best_result[24].0;
+        let max_geodes = best_result.geode();
 
         println!("Most geodes: {}", max_geodes);
 
@@ -377,7 +688,7 @@ impl Day19 {
     }
 }
 
-const TIME_PART1: usize = 24;
+const TIME_LIMIT: usize = 24;
 
 impl Day for Day19 {
     fn part1(&self) -> Answer {
@@ -414,7 +725,7 @@ mod tests {
     #[test]
     fn test_max_geodes() {
         let d = Day19::load("examples/day19_example1.txt");
-        // assert_eq!(d.blueprints[0].quality_level(), 9);
-        assert_eq!(d.blueprints[1].quality_level(), 24);
+        assert_eq!(d.blueprints[0].quality_level(), 9);
+        // assert_eq!(d.blueprints[1].quality_level(), 24);
     }
 }
